@@ -416,23 +416,23 @@ export default function ParentDashboardPage() {
         <div className="mx-auto max-w-[1200px] overflow-hidden rounded-[30px] border-[6px] border-[#c7a531] bg-[#f7f2e8] shadow-[0_0_0_10px_rgba(199,165,49,0.18)]">
         <div className="site-pattern relative p-5 sm:p-8">
           <div className="mx-auto max-w-6xl">
-            <header className="mb-8 rounded-[18px] border border-[#c7a531] bg-[#f5f0e5] px-4 py-6 text-center shadow-[0_0_0_3px_rgba(199,165,49,0.2)]">
-              <div className="mb-4 flex items-center justify-center gap-4 sm:gap-6">
-                <LogoMark />
-                <div className="text-center">
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#583f09] sm:text-sm">
-                    Okinawa Shorin-Ryu
-                  </p>
-                  <h1 className="mt-2 text-2xl font-black uppercase leading-[0.95] text-[#111111] sm:text-5xl">
-                    Welcome, {currentParent.name}
-                  </h1>
-                  <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#6d510c] sm:text-sm">
-                    Parent portal
-                  </p>
+            <header className="mb-8 rounded-[18px] border border-[#c7a531] bg-[#f5f0e5] px-4 py-6 shadow-[0_0_0_3px_rgba(199,165,49,0.2)]">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <LogoMark />
+                  <div className="text-center sm:text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#583f09] sm:text-sm">
+                      Okinawa Shorin-Ryu
+                    </p>
+                    <h1 className="mt-2 text-xl font-black uppercase leading-[0.95] text-[#111111] sm:text-2xl lg:text-3xl">
+                      Okinawa Shorin-Ryu Karate Do Bukenkan of USA
+                    </h1>
+                    <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#6d510c] sm:text-sm">
+                      Parent portal
+                    </p>
+                  </div>
                 </div>
-                <LogoMark />
-              </div>
-              <div className="flex justify-center">
+
                 <button
                   type="button"
                   onClick={handleLogout}

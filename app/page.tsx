@@ -130,8 +130,6 @@ function getParentAccounts() {
 
 export default function Home() {
   const [bookings, setBookings] = useState<BookingRecord[]>(initialBookings);
-  const [adminCode, setAdminCode] = useState("");
-  const [adminError, setAdminError] = useState("");
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [showParentLogin, setShowParentLogin] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -156,37 +154,6 @@ export default function Home() {
       router.push("/parent");
     }
   }, [router]);
-
-  const handleAdminLogin = async () => {
-    if (adminCode.trim() !== "admin123") {
-      setAdminError("Invalid admin access code.");
-      return;
-    }
-
-    if (supabase) {
-      try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: adminEmail,
-          password: adminPassword,
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        localStorage.setItem("shorinryu-role", "admin");
-        setAdminError("");
-        router.push("/admin");
-        return;
-      } catch (error) {
-        console.error("Admin sign-in failed:", error);
-      }
-    }
-
-    localStorage.setItem("shorinryu-role", "admin");
-    setAdminError("");
-    router.push("/admin");
-  };
 
   const handleParentLogin = async () => {
     const trimmedEmail = parentEmail.trim();
@@ -438,7 +405,7 @@ export default function Home() {
                       Okinawa Shorin-Ryu
                     </p>
                     <h1 className="mt-2 text-xl font-black uppercase text-[#111111] sm:text-2xl">
-                      Shorin-Ryu Karate
+                      Okinawa Shorin-Ryu Karate Do Bukenkan of USA
                     </h1>
                   </div>
                 </div>
@@ -460,8 +427,7 @@ export default function Home() {
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
               <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
                 <div>
-                  <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Shorin-Ryu Do Karate Bukenkan</p>
-                  <h2 className="mt-4 text-4xl font-black uppercase leading-tight text-[#111111] sm:text-5xl">
+                  <h2 className="text-4xl font-black uppercase leading-tight text-[#111111] sm:text-5xl">
                     Classes for families, beginners, and first-time guests.
                   </h2>
                   <p className="mt-4 max-w-xl text-base text-[#323232]">
@@ -510,8 +476,10 @@ export default function Home() {
 
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-[#111111]">
               <div className="mb-5 text-center">
-                <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Returning parent</p>
-                <h3 className="mt-2 text-3xl font-black uppercase text-[#111111]">Signed in already?</h3>
+                <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Parent login</p>
+                <h3 className="mt-2 text-2xl font-black uppercase text-[#111111] sm:text-3xl">
+                  Okinawa Shorin-Ryu Karate Do Bukenkan of USA
+                </h3>
               </div>
 
               {showParentLogin ? (
@@ -769,26 +737,6 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-center text-[#111111]">
-              <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Admin access</p>
-              <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
-                <input
-                  type="password"
-                  value={adminCode}
-                  onChange={(event) => setAdminCode(event.target.value)}
-                  placeholder="Enter admin code"
-                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c] sm:max-w-xs"
-                />
-                <button
-                  type="button"
-                  onClick={handleAdminLogin}
-                  className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
-                >
-                  Open admin
-                </button>
-              </div>
-              {adminError ? <p className="mt-3 text-sm font-semibold text-[#8b1e1e]">{adminError}</p> : null}
-            </div>
           </div>
         </div>
       </div>

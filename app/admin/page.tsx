@@ -49,11 +49,16 @@ export default function AdminPage() {
         }
       }
 
-      setIsAdmin(storedRole === "admin");
+      if (storedRole !== "admin") {
+        router.push("/admin/login");
+        return;
+      }
+
+      setIsAdmin(true);
     };
 
     void hydrateAdminAccess();
-  }, []);
+  }, [router]);
 
   const totalCapacity = initialSessions.reduce((sum, session) => sum + session.capacity, 0);
   const confirmedCount = bookings.filter((booking) => booking.status === "confirmed").length;
@@ -77,15 +82,15 @@ export default function AdminPage() {
           <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Restricted access</p>
           <h1 className="mt-4 text-3xl font-black uppercase text-[#111111]">Admin only</h1>
           <p className="mt-4 text-base text-[#444444]">
-            This dashboard is restricted to authorized staff. Use the parent view or enter the admin code to continue.
+            This dashboard is restricted to authorized staff. Redirecting to the secure admin login page.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <button
               type="button"
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/admin/login")}
               className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
             >
-              Parent view
+              Go to admin login
             </button>
           </div>
         </div>
@@ -98,23 +103,23 @@ export default function AdminPage() {
       <div className="mx-auto max-w-[1200px] overflow-hidden rounded-[30px] border-[6px] border-[#c7a531] bg-[#f7f2e8] shadow-[0_0_0_10px_rgba(199,165,49,0.18)]">
         <div className="site-pattern relative p-5 sm:p-8">
           <div className="mx-auto max-w-6xl">
-            <header className="mb-8 rounded-[18px] border border-[#c7a531] bg-[#f5f0e5] px-4 py-6 text-center shadow-[0_0_0_3px_rgba(199,165,49,0.2)]">
-              <div className="mb-4 flex items-center justify-center gap-4 sm:gap-6">
-                <LogoMark />
-                <div className="text-center">
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#583f09] sm:text-sm">
-                    Okinawa Shorin-Ryu
-                  </p>
-                  <h1 className="mt-2 text-2xl font-black uppercase leading-[0.95] text-[#111111] sm:text-5xl">
-                    Admin Dashboard
-                  </h1>
-                  <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#6d510c] sm:text-sm">
-                    Scheduling & Planning
-                  </p>
+            <header className="mb-8 rounded-[18px] border border-[#c7a531] bg-[#f5f0e5] px-4 py-6 shadow-[0_0_0_3px_rgba(199,165,49,0.2)]">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <LogoMark />
+                  <div className="text-center sm:text-left">
+                    <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#583f09] sm:text-sm">
+                      Okinawa Shorin-Ryu
+                    </p>
+                    <h1 className="mt-2 text-xl font-black uppercase leading-[0.95] text-[#111111] sm:text-2xl lg:text-3xl">
+                      Okinawa Shorin-Ryu Karate Do Bukenkan of USA
+                    </h1>
+                    <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#6d510c] sm:text-sm">
+                      Admin Dashboard
+                    </p>
+                  </div>
                 </div>
-                <LogoMark />
-              </div>
-              <div className="flex justify-center">
+
                 <button
                   type="button"
                   onClick={async () => {
@@ -133,7 +138,12 @@ export default function AdminPage() {
             </header>
 
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
-              <div className="mb-6 grid gap-4 md:grid-cols-4">
+              <div className="mb-5 text-center">
+                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Operations overview</p>
+                <h2 className="mt-2 text-3xl font-black uppercase text-[#111111]">Admin command center</h2>
+              </div>
+
+              <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <div className="rounded-2xl border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#5a4309]">Total capacity</p>
                   <p className="mt-3 text-3xl font-black text-[#111111]">{totalCapacity}</p>
@@ -150,9 +160,53 @@ export default function AdminPage() {
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#5a4309]">Open seats</p>
                   <p className="mt-3 text-3xl font-black text-[#111111]">{openSeats}</p>
                 </div>
+                <div className="rounded-2xl border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#5a4309]">Priority</p>
+                  <p className="mt-3 text-lg font-black uppercase text-[#111111]">Attendance</p>
+                </div>
               </div>
 
-              <div className="mb-8 overflow-hidden rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8]">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                {[
+                  { title: "Schedule", subtitle: "Create/edit sessions", detail: "Recurring templates, capacity overrides, cancellations" },
+                  { title: "Bookings", subtitle: "Manage roster", detail: "Walk-in entries, waitlist, reschedule actions" },
+                  { title: "Students", subtitle: "Family records", detail: "Parent links, belt updates, archive profiles" },
+                  { title: "Attendance", subtitle: "Track: P / A / L / E", detail: "Past edits and export-ready reporting" },
+                  { title: "Notifications", subtitle: "Announcements", detail: "Send to class or belt groups, review delivery logs" },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-2xl border border-[#d9bb5c] bg-[#fffdf8] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">{item.title}</p>
+                    <p className="mt-2 text-lg font-black text-[#111111]">{item.subtitle}</p>
+                    <p className="mt-2 text-sm text-[#3b3b3b]">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
+              <div className="mb-5 text-center">
+                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Build priority</p>
+                <h3 className="mt-2 text-3xl font-black uppercase text-[#111111]">Operational roadmap</h3>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {[
+                  "1. Class and schedule management + booking visibility",
+                  "2. Attendance marking and attendance history",
+                  "3. Student and family roster management",
+                  "4. Billing status view before invoice generation",
+                  "5. Notifications and delivery logs",
+                  "6. Audit logging and multi-admin role support",
+                ].map((item) => (
+                  <div key={item} className="rounded-2xl border border-[#d9bb5c] bg-[#fffdf8] p-4 text-sm font-bold text-[#1a1a1a]">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
+              <div className="mb-6 overflow-hidden rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8]">
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead className="bg-[#f5f0e5] text-[#5a4309]">
