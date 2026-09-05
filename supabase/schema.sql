@@ -33,6 +33,10 @@ create table if not exists public.bookings (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists bookings_one_confirmed_per_student_session
+on public.bookings (session_id, lower(parent_email), lower(child_name))
+where status = 'confirmed';
+
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
@@ -94,6 +98,10 @@ declare
   v_taken int;
   v_booking_id uuid;
 begin
+    if auth.uid() is null or lower(auth.jwt() ->> 'email') <> lower(p_parent_email) then
+      raise exception 'Parent email must match the authenticated user';
+    end if;
+
   select capacity into v_capacity
   from public.sessions
   where id = p_session_id
@@ -136,14 +144,39 @@ alter table public.sessions enable row level security;
 alter table public.bookings enable row level security;
 alter table public.profiles enable row level security;
 
+drop policy if exists "Public can read classes" on public.classes;
+drop policy if exists "Public can read sessions" on public.sessions;
+drop policy if exists "Public can insert bookings" on public.bookings;
+drop policy if exists "Parents can insert own bookings" on public.bookings;
+drop policy if exists "Admins can insert bookings" on public.bookings;
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+drop policy if exists "Admins can read all profiles" on public.profiles;
+drop policy if exists "Admins can read all bookings" on public.bookings;
+drop policy if exists "Parents can read own bookings" on public.bookings;
+drop policy if exists "Parents can update own bookings" on public.bookings;
+drop policy if exists "Admins can update all bookings" on public.bookings;
+
 create policy "Public can read classes"
 on public.classes for select using (true);
 
 create policy "Public can read sessions"
 on public.sessions for select using (true);
 
-create policy "Public can insert bookings"
-on public.bookings for insert with check (true);
+drop policy if exists "Public can insert bookings" on public.bookings;
+
+create policy "Parents can insert own bookings"
+on public.bookings for insert with check (
+  lower(parent_email) = lower(auth.jwt() ->> 'email')
+);
+
+create policy "Admins can insert bookings"
+on public.bookings for insert with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
 
 create policy "Users can view own profile"
 on public.profiles for select using (auth.uid() = id);
@@ -165,6 +198,19 @@ on public.bookings for select using (
     select 1 from public.profiles p
     where p.id = auth.uid() and p.role = 'admin'
   )
+);
+
+create policy "Parents can read own bookings"
+on public.bookings for select using (
+  lower(parent_email) = lower(auth.jwt() ->> 'email')
+);
+
+create policy "Parents can update own bookings"
+on public.bookings for update using (
+  lower(parent_email) = lower(auth.jwt() ->> 'email')
+)
+with check (
+  lower(parent_email) = lower(auth.jwt() ->> 'email')
 );
 
 create policy "Admins can update all bookings"

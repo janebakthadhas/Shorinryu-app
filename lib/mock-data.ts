@@ -88,8 +88,11 @@ export function buildWeeklySessions(referenceDate: Date = new Date()): SessionRe
 }
 
 export function buildMonthlySessions(referenceDate: Date = new Date()): SessionRecord[] {
+  const firstWeekStart = new Date(referenceDate);
+  firstWeekStart.setDate(firstWeekStart.getDate() + 7);
+
   return Array.from({ length: 4 }, (_, index) => {
-    const weekStart = new Date(referenceDate);
+    const weekStart = new Date(firstWeekStart);
     weekStart.setDate(weekStart.getDate() + index * 7);
     return buildWeeklySessions(weekStart);
   }).flat();
@@ -97,73 +100,40 @@ export function buildMonthlySessions(referenceDate: Date = new Date()): SessionR
 
 export const initialSessions: SessionRecord[] = buildWeeklySessions();
 
-export const initialBookings: BookingRecord[] = [
-  {
-    id: "booking-1",
-    sessionId: initialSessions[0].id,
-    parentName: "Maya Lee",
-    parentEmail: "maya@example.com",
-    parentPhone: "(555) 212-0011",
-    childName: "Ava Lee",
-    status: "confirmed",
-  },
-  {
-    id: "booking-2",
-    sessionId: initialSessions[0].id,
-    parentName: "Daniel Price",
-    parentEmail: "daniel@example.com",
-    parentPhone: "(555) 212-0012",
-    childName: "Leo Price",
-    status: "confirmed",
-  },
-  {
-    id: "booking-3",
-    sessionId: initialSessions[2].id,
-    parentName: "Priya Shah",
-    parentEmail: "priya@example.com",
-    parentPhone: "(555) 212-0033",
-    childName: "Rohan Shah",
-    status: "confirmed",
-  },
-  {
-    id: "booking-4",
-    sessionId: initialSessions[4].id,
-    parentName: "Olivia Hart",
-    parentEmail: "olivia@example.com",
-    parentPhone: "(555) 212-0044",
-    childName: "N/A",
-    status: "confirmed",
-  },
-  {
-    id: "booking-5",
-    sessionId: initialSessions[4].id,
-    parentName: "Evan Ross",
-    parentEmail: "evan@example.com",
-    parentPhone: "(555) 212-0045",
-    childName: "N/A",
-    status: "confirmed",
-  },
-  {
-    id: "booking-6",
-    sessionId: initialSessions[4].id,
-    parentName: "Alicia Gomez",
-    parentEmail: "alicia@example.com",
-    parentPhone: "(555) 212-0046",
-    childName: "N/A",
-    status: "cancelled",
-  },
-];
+export const initialBookings: BookingRecord[] = [];
 
-export function getSessionAvailability(session: SessionRecord, bookings: BookingRecord[]) {
-  const confirmed = bookings.filter(
+export function getSessionAvailability(
+  session: SessionRecord,
+  bookings: BookingRecord[],
+  guestBookings: Array<{ sessionId: string; status?: string }> = [],
+) {
+  const parentConfirmed = bookings.filter(
     (booking) => booking.sessionId === session.id && booking.status === "confirmed",
   ).length;
+
+  const guestConfirmed = (guestBookings || []).filter(
+    (guest) => guest.sessionId === session.id && (guest.status === "confirmed" || !guest.status),
+  ).length;
+
+  const confirmed = parentConfirmed + guestConfirmed;
 
   return {
     confirmed,
     open: Math.max(session.capacity - confirmed, 0),
     isFull: confirmed >= session.capacity,
   };
+}
+
+export function getSessionDisplayName(session: SessionRecord, fallbackName: string) {
+  const weekday = new Date(`${session.date}T00:00:00`).getDay();
+
+  if (weekday === 4 && session.startTime === "17:30") return "Class 1";
+  if (weekday === 4 && session.startTime === "18:45") return "Class 2";
+  if (weekday === 5 && session.startTime === "17:30") return "Class 3";
+  if (weekday === 5 && session.startTime === "18:45") return "Class 4";
+  if (weekday === 6) return "Early Birds";
+
+  return fallbackName;
 }
 
 export function formatSessionLabel(session: SessionRecord) {

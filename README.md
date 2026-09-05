@@ -16,6 +16,26 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Production launch
+
+1. Create or select a Supabase project.
+2. Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor. This creates the tables, booking RPC, ownership policies, and duplicate-booking constraint.
+3. Create the first admin user in Supabase Authentication, then set that user's `profiles.role` to `admin`.
+4. Add these Vercel environment variables for Preview and Production:
+	- `NEXT_PUBLIC_SUPABASE_URL`
+	- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+5. Deploy the `app` directory as the Vercel project root with build command `npm run build`.
+6. Verify the deployed app with separate browser sessions:
+	- register a parent account
+	- add two family members
+	- book one session for each child
+	- confirm each child appears only in that parent's bookings
+	- edit and cancel one booking
+	- confirm the Admin account can see and override the records
+	- confirm a guest booking appears only in the Admin guest list
+
+The localStorage fallback is for offline demos only. It is not an acceptable production security boundary because browser users can inspect or change it. Production data access should use Supabase with the SQL policies applied.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

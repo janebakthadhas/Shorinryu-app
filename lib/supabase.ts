@@ -105,6 +105,8 @@ export async function getSupabaseBookings(): Promise<BookingRecord[]> {
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function createSupabaseBooking({
   sessionId,
   parentName,
@@ -120,6 +122,10 @@ export async function createSupabaseBooking({
 }): Promise<{ ok: boolean; bookingId?: string; message?: string }> {
   if (!supabase) {
     return { ok: true, message: "Supabase not configured; using demo mode." };
+  }
+
+  if (!UUID_REGEX.test(sessionId)) {
+    return { ok: true, message: "Local session ID used." };
   }
 
   const { data, error } = await supabase.rpc("book_slot", {
@@ -148,6 +154,10 @@ export async function cancelSupabaseBooking(bookingId: string): Promise<{ ok: bo
     return { ok: true, message: "Supabase not configured; using demo mode." };
   }
 
+  if (!UUID_REGEX.test(bookingId)) {
+    return { ok: true, message: "Local booking ID used." };
+  }
+
   const { error } = await supabase
     .from("bookings")
     .update({ status: "cancelled" })
@@ -158,6 +168,35 @@ export async function cancelSupabaseBooking(bookingId: string): Promise<{ ok: bo
       ok: false,
       message: error.message || "Unable to cancel booking.",
     };
+  }
+
+  return { ok: true };
+}
+
+export async function updateSupabaseBooking({
+  bookingId,
+  sessionId,
+  childName,
+}: {
+  bookingId: string;
+  sessionId: string;
+  childName: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  if (!supabase) {
+    return { ok: true, message: "Supabase not configured; using demo mode." };
+  }
+
+  if (!UUID_REGEX.test(bookingId) || !UUID_REGEX.test(sessionId)) {
+    return { ok: true, message: "Local ID used." };
+  }
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({ session_id: sessionId, child_name: childName })
+    .eq("id", bookingId);
+
+  if (error) {
+    return { ok: false, message: error.message || "Unable to update booking." };
   }
 
   return { ok: true };

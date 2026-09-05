@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildMonthlySessions,
+  formatSessionLabel,
   getSessionAvailability,
+  getSessionDisplayName,
   initialBookings,
   initialSessions,
   karateClasses,
@@ -16,25 +18,85 @@ import {
   createSupabaseBooking,
   getSupabaseBookingsForParent,
   supabase,
+  updateSupabaseBooking,
 } from "@/lib/supabase";
 
-const PARENT_ACCOUNTS = [
-  {
-    email: "maya@example.com",
-    password: "parent123",
-    name: "Maya Lee",
-  },
-  {
-    email: "daniel@example.com",
-    password: "parent123",
-    name: "Daniel Price",
-  },
-  {
-    email: "priya@example.com",
-    password: "parent123",
-    name: "Priya Shah",
-  },
-];
+const PARENT_REGISTRY_KEY = "shorinryu-parent-registry";
+
+type ParentChildRecord = {
+  name: string;
+  age?: string;
+  belt?: string;
+  className?: string;
+  classTime?: string;
+};
+
+type ParentRegistryEntry = {
+  email: string;
+  name: string;
+  password: string;
+  children: ParentChildRecord[];
+};
+
+function getParentRegistry(): ParentRegistryEntry[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const stored = localStorage.getItem(PARENT_REGISTRY_KEY);
+    if (!stored) {
+      localStorage.setItem(PARENT_REGISTRY_KEY, JSON.stringify([]));
+      return [];
+    }
+
+    const parsed = JSON.parse(stored) as ParentRegistryEntry[];
+    const realEntries = Array.isArray(parsed)
+      ? parsed.filter((entry) => !entry.email.endsWith("@example.com") && entry.email !== "parent@demo.com")
+      : [];
+    localStorage.setItem(PARENT_REGISTRY_KEY, JSON.stringify(realEntries));
+    return realEntries;
+  } catch {
+    localStorage.removeItem(PARENT_REGISTRY_KEY);
+    return [];
+  }
+}
+
+function saveParentRegistry(entries: ParentRegistryEntry[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(PARENT_REGISTRY_KEY, JSON.stringify(entries));
+}
+
+function getParentChildrenForEmail(email: string) {
+  const registry = getParentRegistry();
+  const entry = registry.find((parent) => parent.email.toLowerCase() === email.toLowerCase());
+  return entry?.children ?? [];
+}
+
+function upsertParentRegistryEntry(parent: { email: string; name: string; password: string; children?: ParentChildRecord[] }) {
+  const registry = getParentRegistry();
+  const nextEntry: ParentRegistryEntry = {
+    email: parent.email,
+    name: parent.name,
+    password: parent.password,
+    children: parent.children?.length ? parent.children : getParentChildrenForEmail(parent.email),
+  };
+
+  const existingIndex = registry.findIndex(
+    (entry) => entry.email.toLowerCase() === parent.email.toLowerCase(),
+  );
+
+  if (existingIndex >= 0) {
+    registry.splice(existingIndex, 1, nextEntry);
+  } else {
+    registry.push(nextEntry);
+  }
+
+  saveParentRegistry(registry);
+}
 
 function LogoMark() {
   return (
@@ -50,6 +112,7 @@ function BookingCard({
   session,
   classInfo,
   bookings,
+  guestBookings = [],
   onBook,
   onCancel,
   currentParentName,
@@ -57,11 +120,12 @@ function BookingCard({
   session: SessionRecord;
   classInfo: (typeof karateClasses)[number];
   bookings: BookingRecord[];
+  guestBookings?: Array<{ sessionId: string; status?: string }>;
   onBook: (sessionId: string) => void;
   onCancel: (sessionId: string) => void;
   currentParentName: string;
 }) {
-  const availability = getSessionAvailability(session, bookings);
+  const availability = getSessionAvailability(session, bookings, guestBookings);
   const myBooking = bookings.find(
     (booking) =>
       booking.sessionId === session.id &&
@@ -79,9 +143,9 @@ function BookingCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5d4408]">
-            {classInfo.name}
+            {getSessionDisplayName(session, classInfo.name)}
           </p>
-          <h3 className="mt-2 text-xl font-black text-[#111111]">
+          <h3 className="mt-2 text-xl font-black text-[#111111]" suppressHydrationWarning>
             {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
               weekday: "short",
               month: "short",
@@ -111,7 +175,6 @@ function BookingCard({
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-sm text-[#363636]">
           <p className="font-bold">{classInfo.instructor}</p>
-          <p>{classInfo.ageGroup}</p>
         </div>
 
         <button
@@ -127,51 +190,81 @@ function BookingCard({
   );
 }
 
-type PendingAction = {
-  type: "book" | "cancel";
+type BookingDraft = {
+  id?: string;
   sessionId: string;
-  sessionLabel: string;
+  parentName: string;
+  parentEmail: string;
+  parentPhone: string;
+  childName: string;
+  status: "confirmed" | "cancelled";
 };
+
+const BOOKINGS_STORAGE_KEY = "shorinryu-admin-bookings";
 
 export default function ParentDashboardPage() {
   const [bookings, setBookings] = useState<BookingRecord[]>(initialBookings);
+  const [guestBookings, setGuestBookings] = useState<Array<{ sessionId: string; status?: string }>>([]);
   const [currentParent, setCurrentParent] = useState<{ name: string; email: string } | null>(null);
   const [viewMode, setViewMode] = useState<"weekly" | "monthly">("weekly");
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [bookingEditor, setBookingEditor] = useState<{
+    mode: "create" | "edit";
+    draft: BookingDraft;
+  } | null>(null);
+  const [cancelSelection, setCancelSelection] = useState<{
+    sessionId: string;
+    options: BookingRecord[];
+  } | null>(null);
+  const [bookingError, setBookingError] = useState("");
+  const [childNameDraft, setChildNameDraft] = useState("");
+  const [childAgeDraft, setChildAgeDraft] = useState("");
+  const [children, setChildren] = useState<ParentChildRecord[]>([]);
   const router = useRouter();
 
   useEffect(() => {
     const hydrateParentSession = async () => {
+      const storedUser = localStorage.getItem("shorinryu-parent");
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser) as { name?: string; email?: string };
+          if (parsedUser.email) {
+            const parentObj = {
+              name: parsedUser.name || "Parent",
+              email: parsedUser.email,
+            };
+            setCurrentParent(parentObj);
+            setChildren(getParentChildrenForEmail(parentObj.email));
+            localStorage.setItem("shorinryu-role", "parent");
+            return;
+          }
+        } catch {
+          localStorage.removeItem("shorinryu-parent");
+        }
+      }
+
       if (supabase) {
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (session?.user) {
-          const nextParent = {
-            name: session.user.user_metadata?.full_name || session.user.email?.split("@")?.[0] || "Parent",
-            email: session.user.email || "",
-          };
+          const metadataRole = session.user.user_metadata?.role;
+          if (metadataRole === "parent") {
+            const nextParent = {
+              name: session.user.user_metadata?.full_name || session.user.email?.split("@")?.[0] || "Parent",
+              email: session.user.email || "",
+            };
 
-          setCurrentParent(nextParent);
-          localStorage.setItem("shorinryu-parent", JSON.stringify(nextParent));
-          localStorage.setItem("shorinryu-role", "parent");
-          return;
+            setCurrentParent(nextParent);
+            setChildren(getParentChildrenForEmail(nextParent.email));
+            localStorage.setItem("shorinryu-parent", JSON.stringify(nextParent));
+            localStorage.setItem("shorinryu-role", "parent");
+            return;
+          }
         }
       }
 
-      const storedUser = localStorage.getItem("shorinryu-parent");
-      if (!storedUser) {
-        router.push("/");
-        return;
-      }
-
-      try {
-        setCurrentParent(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem("shorinryu-parent");
-        router.push("/");
-      }
+      router.push("/");
     };
 
     void hydrateParentSession();
@@ -184,141 +277,300 @@ export default function ParentDashboardPage() {
         return;
       }
 
+      try {
+        const storedBookings = localStorage.getItem(BOOKINGS_STORAGE_KEY);
+        if (storedBookings) {
+          const parsedBookings = JSON.parse(storedBookings) as BookingRecord[];
+          const realBookings = Array.isArray(parsedBookings)
+            ? parsedBookings.filter((booking) => !booking.id.match(/^booking-[1-6]$/) && !booking.parentEmail.endsWith("@example.com"))
+            : [];
+          if (realBookings.length > 0) {
+            setBookings(realBookings);
+            localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(realBookings));
+            return;
+          }
+        }
+      } catch {
+        localStorage.removeItem(BOOKINGS_STORAGE_KEY);
+      }
+
       if (supabase) {
-        const nextBookings = await getSupabaseBookingsForParent(currentParent.email);
-        if (nextBookings.length > 0) {
-          setBookings(nextBookings);
-          return;
+        try {
+          const nextBookings = await getSupabaseBookingsForParent(currentParent.email);
+          if (nextBookings.length > 0) {
+            setBookings(nextBookings);
+            localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
+            return;
+          }
+        } catch {
+          // fall back to local state when Supabase data is unavailable
         }
       }
 
       setBookings(initialBookings);
+      localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(initialBookings));
+    };
+
+    const loadGuestBookings = () => {
+      try {
+        const storedGuests = localStorage.getItem("shorinryu-guest-bookings");
+        if (storedGuests) {
+          const parsed = JSON.parse(storedGuests);
+          if (Array.isArray(parsed)) setGuestBookings(parsed);
+        }
+      } catch {}
     };
 
     void syncBookings();
+    loadGuestBookings();
   }, [currentParent?.email]);
 
-  const currentParentName = currentParent?.name ?? "Maya Lee";
+  const currentParentName = currentParent?.name ?? "Parent";
+  const allSessions = useMemo(() => [...initialSessions, ...buildMonthlySessions()], []);
+  const allowedBookingDates = useMemo(
+    () =>
+      [...new Set(
+        allSessions
+          .filter((session) => {
+            const day = new Date(`${session.date}T00:00:00`).getDay();
+            return day !== 0 && day !== 1 && day !== 2 && day !== 3;
+          })
+          .map((session) => session.date),
+      )].sort(),
+    [allSessions],
+  );
+  const myBookings = useMemo(
+    () =>
+      bookings.filter(
+        (booking) =>
+          booking.parentEmail === (currentParent?.email ?? "maya@example.com") ||
+          booking.parentName === currentParentName,
+      ),
+    [bookings, currentParent?.email, currentParentName],
+  );
+  const isDuplicateBooking = Boolean(
+    bookingEditor &&
+      bookingEditor.draft.status === "confirmed" &&
+      bookingEditor.draft.childName.trim() &&
+      bookings.some(
+        (booking) =>
+          booking.id !== bookingEditor.draft.id &&
+          booking.sessionId === bookingEditor.draft.sessionId &&
+          booking.childName.trim().toLowerCase() === bookingEditor.draft.childName.trim().toLowerCase() &&
+          booking.status === "confirmed",
+      ),
+  );
+
+  const familyChildren = useMemo(() => {
+    const namesFromChildren = children.map((c) => c.name.trim()).filter(Boolean);
+    const namesFromBookings = bookings
+      .filter(
+        (b) =>
+          b.parentName === currentParentName ||
+          (currentParent?.email && b.parentEmail.toLowerCase() === currentParent.email.toLowerCase()),
+      )
+      .map((b) => b.childName.trim())
+      .filter(Boolean);
+
+    return [...new Set([...namesFromChildren, ...namesFromBookings])];
+  }, [children, bookings, currentParentName, currentParent]);
+
+  const openCreateBooking = (sessionId?: string) => {
+    setBookingError("");
+    const defaultDate = allowedBookingDates[0] ?? "";
+    const defaultSession = sessionId
+      ? allSessions.find((session) => session.id === sessionId) ?? allSessions.find((session) => session.date === defaultDate)
+      : allSessions.find((session) => session.date === defaultDate) ?? allSessions[0];
+
+    setBookingEditor({
+      mode: "create",
+      draft: {
+        sessionId: defaultSession?.id ?? "",
+        parentName: currentParentName,
+        parentEmail: currentParent?.email ?? "maya@example.com",
+        parentPhone: "",
+        childName: familyChildren[0] ?? "",
+        status: "confirmed",
+      },
+    });
+  };
+
+  const openEditBooking = (booking: BookingRecord) => {
+    setBookingError("");
+    setBookingEditor({
+      mode: "edit",
+      draft: {
+        id: booking.id,
+        sessionId: booking.sessionId,
+        parentName: booking.parentName,
+        parentEmail: booking.parentEmail,
+        parentPhone: booking.parentPhone ?? "",
+        childName: booking.childName,
+        status: booking.status,
+      },
+    });
+  };
+
+  const saveBookingChanges = async () => {
+    if (!bookingEditor) {
+      return;
+    }
+
+    const draft = bookingEditor.draft;
+    const nextParentName = draft.parentName.trim();
+    const nextEmail = draft.parentEmail.trim() || currentParent?.email || "maya@example.com";
+    const nextChildName = draft.childName.trim();
+
+    if (!draft.sessionId || !nextParentName || !nextChildName) {
+      return;
+    }
+
+    const duplicateBooking = bookings.some(
+      (booking) =>
+        booking.id !== draft.id &&
+        booking.sessionId === draft.sessionId &&
+        booking.childName.trim().toLowerCase() === nextChildName.toLowerCase() &&
+        booking.status === "confirmed",
+    );
+
+    if (duplicateBooking) {
+      setBookingError("This student is already booked for the selected session.");
+      return;
+    }
+
+    let persistedBookingId = draft.id;
+    if (supabase) {
+      const result = draft.id
+        ? await updateSupabaseBooking({ bookingId: draft.id, sessionId: draft.sessionId, childName: nextChildName })
+        : await createSupabaseBooking({
+            sessionId: draft.sessionId,
+            parentName: nextParentName,
+            parentEmail: nextEmail,
+            parentPhone: draft.parentPhone.trim() || undefined,
+            childName: nextChildName,
+          });
+
+      if (!result.ok) {
+        setBookingError(result.message ?? "Unable to save booking.");
+        return;
+      }
+
+      persistedBookingId = "bookingId" in result && typeof result.bookingId === "string"
+        ? result.bookingId
+        : draft.id;
+    }
+
+    const nextBooking: BookingRecord = {
+      id: persistedBookingId ?? `booking-${Date.now()}`,
+      sessionId: draft.sessionId,
+      parentName: nextParentName,
+      parentEmail: nextEmail,
+      parentPhone: draft.parentPhone.trim() || undefined,
+      childName: nextChildName,
+      status: draft.status === "cancelled" ? "cancelled" : "confirmed",
+    };
+
+    setBookings((current) => {
+      const filtered = current.filter((booking) => booking.id !== nextBooking.id);
+      const nextList = [...filtered, nextBooking];
+      localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
+      return nextList;
+    });
+
+    setBookingEditor(null);
+    setBookingError("");
+  };
 
   const handleBook = (sessionId: string) => {
-    const session = [...initialSessions, ...buildMonthlySessions()].find((item) => item.id === sessionId);
-    if (!session) {
-      return;
-    }
-
-    const classInfo = karateClasses.find((item) => item.id === session.classId);
-    const sessionLabel = `${classInfo?.name ?? "Class"} · ${new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })} · ${new Date(`2000-01-01T${session.startTime}:00`).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })}`;
-
-    setPendingAction({ type: "book", sessionId, sessionLabel });
+    openCreateBooking(sessionId);
   };
 
-  const handleCancel = (sessionId: string) => {
-    const session = [...initialSessions, ...buildMonthlySessions()].find((item) => item.id === sessionId);
-    if (!session) {
+  const handleCancel = async (sessionId: string) => {
+    const matchingBookings = bookings.filter(
+      (booking) =>
+        booking.sessionId === sessionId &&
+        booking.parentName === currentParentName &&
+        booking.status === "confirmed",
+    );
+
+    if (matchingBookings.length > 1) {
+      setCancelSelection({ sessionId, options: matchingBookings });
       return;
     }
 
-    const classInfo = karateClasses.find((item) => item.id === session.classId);
-    const sessionLabel = `${classInfo?.name ?? "Class"} · ${new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })} · ${new Date(`2000-01-01T${session.startTime}:00`).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })}`;
-
-    setPendingAction({ type: "cancel", sessionId, sessionLabel });
-  };
-
-  const confirmPendingAction = async () => {
-    if (!pendingAction) {
-      return;
-    }
-
-    const parentEmail = currentParent?.email ?? "maya@example.com";
-
-    if (pendingAction.type === "book") {
+    if (matchingBookings.length === 1) {
+      const bookingId = matchingBookings[0].id;
       if (supabase) {
-        const result = await createSupabaseBooking({
-          sessionId: pendingAction.sessionId,
-          parentName: currentParentName,
-          parentEmail,
-          parentPhone: undefined,
-          childName: "Ava Lee",
-        });
-
+        const result = await cancelSupabaseBooking(bookingId);
         if (!result.ok) {
-          setPendingAction(null);
+          setBookingError(result.message ?? "Unable to cancel booking.");
           return;
         }
       }
-
       setBookings((current) => {
-        if (
-          current.some(
-            (booking) =>
-              booking.sessionId === pendingAction.sessionId &&
-              booking.parentName === currentParentName &&
-              booking.status === "confirmed",
-          )
-        ) {
-          return current;
-        }
-
-        const newId = `booking-${Date.now()}`;
-        return [
-          ...current,
-          {
-            id: newId,
-            sessionId: pendingAction.sessionId,
-            parentName: currentParentName,
-            parentEmail,
-            parentPhone: "(555) 212-0011",
-            childName: "Ava Lee",
-            status: "confirmed",
-          },
-        ];
+        const nextList = current.filter((booking) => booking.id !== bookingId);
+        localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
+        return nextList;
       });
+      return;
+    }
+  };
+
+  const handleEditBooking = (bookingId: string) => {
+    const booking = bookings.find((item) => item.id === bookingId);
+    if (booking) {
+      openEditBooking(booking);
+    }
+  };
+
+  const handleDeleteBooking = (bookingId: string) => {
+    setBookings((current) => {
+      const nextList = current.filter((booking) => booking.id !== bookingId);
+      localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
+      return nextList;
+    });
+    setBookingEditor(null);
+  };
+
+  const handleAddChild = () => {
+    const trimmedChild = childNameDraft.trim();
+    const trimmedAge = childAgeDraft.trim();
+    if (!trimmedChild || !currentParent?.email) {
+      return;
     }
 
-    if (pendingAction.type === "cancel") {
-      const bookingToCancel = bookings.find(
-        (booking) =>
-          booking.sessionId === pendingAction.sessionId &&
-          booking.parentName === currentParentName &&
-          booking.status === "confirmed",
-      );
+    const registry = getParentRegistry();
+    const existingEntry = registry.find(
+      (entry) => entry.email.toLowerCase() === currentParent.email.toLowerCase(),
+    );
 
-      if (supabase && bookingToCancel) {
-        const result = await cancelSupabaseBooking(bookingToCancel.id);
-        if (!result.ok) {
-          setPendingAction(null);
-          return;
-        }
-      }
+    const nextChildren = existingEntry?.children ?? children;
+    const alreadyExists = nextChildren.some((child) => child.name.toLowerCase() === trimmedChild.toLowerCase());
 
-      setBookings((current) =>
-        current.map((booking) =>
-          booking.sessionId === pendingAction.sessionId &&
-          booking.parentName === currentParentName &&
-          booking.status === "confirmed"
-            ? { ...booking, status: "cancelled" }
-            : booking,
-        ),
-      );
+    if (alreadyExists) {
+      setChildNameDraft("");
+      setChildAgeDraft("");
+      return;
     }
 
-    setPendingAction(null);
+    const updatedChildren = [...nextChildren, {
+      name: trimmedChild,
+      age: trimmedAge || "Not set",
+      belt: "White",
+      className: "Class 1",
+      classTime: "Thursday 5:30 PM - 6:30 PM",
+    }];
+
+    upsertParentRegistryEntry({
+      email: currentParent.email,
+      name: currentParent.name,
+      password: "",
+      children: updatedChildren,
+    });
+
+    setChildren(updatedChildren);
+    setChildNameDraft("");
+    setChildAgeDraft("");
   };
 
   const visibleSessions = useMemo(() => {
@@ -382,30 +634,270 @@ export default function ParentDashboardPage() {
 
   return (
     <>
-      {pendingAction ? (
+      {cancelSelection ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/50 p-4">
-          <div className="w-full max-w-md rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">
-              {pendingAction.type === "book" ? "Confirm booking" : "Cancel booking"}
-            </p>
-            <h3 className="mt-3 text-2xl font-black uppercase text-[#111111]">
-              {pendingAction.type === "book" ? "Book this session?" : "Cancel this session?"}
-            </h3>
-            <p className="mt-3 text-sm text-[#3f3f3f]">{pendingAction.sessionLabel}</p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <div className="w-full max-w-lg rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">Cancel booking</p>
+            <h3 className="mt-3 text-2xl font-black uppercase text-[#111111]">Which child are you canceling?</h3>
+            <div className="mt-5 space-y-3">
+              {cancelSelection.options.map((booking) => {
+                const session = allSessions.find((item) => item.id === booking.sessionId);
+                const classInfo = karateClasses.find((klass) => klass.id === session?.classId);
+
+                return (
+                  <button
+                    key={booking.id}
+                    type="button"
+                    onClick={() => {
+                      setBookings((current) => {
+                        const nextList = current.filter((item) => item.id !== booking.id);
+                        localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
+                        return nextList;
+                      });
+                      setCancelSelection(null);
+                    }}
+                    className="w-full rounded-2xl border border-[#c7a531] bg-[#f9f4ea] p-4 text-left"
+                  >
+                    <p className="text-sm font-black uppercase tracking-[0.12em] text-[#5a4309]">
+                      {session && classInfo ? getSessionDisplayName(session, classInfo.name) : "Class"}
+                    </p>
+                    <p className="mt-2 text-lg font-black text-[#111111]">{booking.childName}</p>
+                    <p className="mt-1 text-sm text-[#3b3b3b]">
+                      {session ? formatSessionLabel(session) : "Session details unavailable"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
-                onClick={() => setPendingAction(null)}
+                onClick={() => setCancelSelection(null)}
+                className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {bookingEditor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/50 p-4">
+          <div className="w-full max-w-xl rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">
+              {bookingEditor.mode === "create" ? "New booking" : "Edit booking"}
+            </p>
+            <h3 className="mt-3 text-2xl font-black uppercase text-[#111111]">
+              {bookingEditor.mode === "create" ? "Book a class" : "Update reservation"}
+            </h3>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Date
+                </label>
+                <select
+                  value={
+                    allSessions.find((session) => session.id === bookingEditor.draft.sessionId)?.date ??
+                    allowedBookingDates[0] ??
+                    ""
+                  }
+                  onChange={(event) => {
+                    setBookingError("");
+                    const nextDate = event.target.value;
+                    const firstSessionForDate = allSessions
+                      .filter((session) => session.date === nextDate)
+                      .sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
+
+                    setBookingEditor((current) =>
+                      current
+                        ? {
+                            ...current,
+                            draft: {
+                              ...current.draft,
+                              sessionId: firstSessionForDate?.id ?? "",
+                            },
+                          }
+                        : current,
+                    );
+                  }}
+                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                >
+                  {allowedBookingDates.map((date) => (
+                    <option key={date} value={date}>
+                      {new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Session
+                </label>
+                <select
+                  value={bookingEditor.draft.sessionId}
+                  onChange={(event) => {
+                    setBookingError("");
+                    setBookingEditor((current) =>
+                      current
+                        ? { ...current, draft: { ...current.draft, sessionId: event.target.value } }
+                        : current,
+                    );
+                  }}
+                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                >
+                  {allSessions
+                    .filter(
+                      (session) =>
+                        session.date ===
+                        (allSessions.find((item) => item.id === bookingEditor.draft.sessionId)?.date ?? allowedBookingDates[0] ?? ""),
+                    )
+                    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                    .map((session) => {
+                      const classInfo = karateClasses.find((item) => item.id === session.classId);
+                      return (
+                        <option
+                          key={session.id}
+                          value={session.id}
+                          disabled={bookings.some(
+                            (booking) =>
+                              booking.id !== bookingEditor.draft.id &&
+                              booking.sessionId === session.id &&
+                              booking.childName.trim().toLowerCase() === bookingEditor.draft.childName.trim().toLowerCase() &&
+                              booking.status === "confirmed",
+                          )}
+                        >
+                          {classInfo ? getSessionDisplayName(session, classInfo.name) : "Class"} · {formatSessionLabel(session)}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Parent name
+                </label>
+                <input
+                  value={bookingEditor.draft.parentName}
+                  onChange={(event) =>
+                    setBookingEditor((current) =>
+                      current
+                        ? { ...current, draft: { ...current.draft, parentName: event.target.value } }
+                        : current,
+                    )
+                  }
+                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Parent email
+                </label>
+                <input
+                  type="email"
+                  value={bookingEditor.draft.parentEmail}
+                  onChange={(event) =>
+                    setBookingEditor((current) =>
+                      current
+                        ? { ...current, draft: { ...current.draft, parentEmail: event.target.value } }
+                        : current,
+                    )
+                  }
+                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Phone
+                </label>
+                <input
+                  value={bookingEditor.draft.parentPhone}
+                  onChange={(event) =>
+                    setBookingEditor((current) =>
+                      current
+                        ? { ...current, draft: { ...current.draft, parentPhone: event.target.value } }
+                        : current,
+                    )
+                  }
+                  className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                  Child name
+                </label>
+                {familyChildren.length > 0 ? (
+                  <select
+                    value={bookingEditor.draft.childName}
+                    onChange={(event) => {
+                      setBookingError("");
+                      const val = event.target.value;
+                      setBookingEditor((current) =>
+                        current
+                          ? { ...current, draft: { ...current.draft, childName: val } }
+                          : current,
+                      );
+                    }}
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                  >
+                    {familyChildren.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={bookingEditor.draft.childName}
+                    onChange={(event) =>
+                      (setBookingError(""), setBookingEditor((current) =>
+                        current
+                          ? { ...current, draft: { ...current.draft, childName: event.target.value } }
+                          : current,
+                      ))
+                    }
+                    placeholder="Child or family member name"
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                  />
+                )}
+                {bookingError ? <p className="mt-2 text-sm font-semibold text-[#8b1e1e]">{bookingError}</p> : null}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              {bookingEditor.mode === "edit" ? (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteBooking(bookingEditor.draft.id ?? "")}
+                  className="rounded-full border border-[#8a2424] bg-[#f6d9d9] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
+                >
+                  Delete
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setBookingEditor(null)}
                 className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
               >
                 Back
               </button>
               <button
                 type="button"
-                onClick={confirmPendingAction}
-                className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
+                onClick={saveBookingChanges}
+                disabled={isDuplicateBooking}
+                className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717] disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
               >
-                {pendingAction.type === "book" ? "Confirm" : "Cancel booking"}
+                {bookingEditor.mode === "edit" ? "Update booking" : "Save booking"}
               </button>
             </div>
           </div>
@@ -444,6 +936,50 @@ export default function ParentDashboardPage() {
             </header>
 
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
+              <div className="mb-5 rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-xl font-black uppercase text-[#111111]">My children</h3>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {children.length > 0 ? (
+                    children.map((child) => (
+                      <div key={`${child.name}-${child.age}`} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Student</p>
+                        <p className="mt-2 text-lg font-black text-[#111111]">{child.name}</p>
+                        <p className="mt-1 text-sm text-[#3b3b3b]">Age: {child.age || "Not set"}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-[#3b3b3b]">No children added yet. Add your child or family member below to auto-fill future bookings.</p>
+                  )}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-[1.5fr_0.7fr_auto]">
+                  <input
+                    type="text"
+                    value={childNameDraft}
+                    onChange={(event) => setChildNameDraft(event.target.value)}
+                    placeholder="Child or family member name"
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c]"
+                  />
+                  <input
+                    type="text"
+                    value={childAgeDraft}
+                    onChange={(event) => setChildAgeDraft(event.target.value)}
+                    placeholder="Age"
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddChild}
+                    className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
+                  >
+                    Add child / family member
+                  </button>
+                </div>
+              </div>
+
               <div className="mb-5 text-center">
                 <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Parent booking</p>
                 <div className="mt-4 flex justify-center">
@@ -476,6 +1012,67 @@ export default function ParentDashboardPage() {
                     : "Plan ahead for the upcoming month and choose the best session for your family."}
                 </p>
               </div>
+
+              <div className="mb-6 flex justify-start sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => openCreateBooking()}
+                  className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
+                >
+                  New booking
+                </button>
+              </div>
+
+              {myBookings.length > 0 ? (
+                <div className="mb-6 rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">My bookings</p>
+                      <h4 className="mt-2 text-2xl font-black uppercase text-[#111111]">Upcoming reservations</h4>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {myBookings.map((booking) => {
+                      const session = allSessions.find((item) => item.id === booking.sessionId) ?? initialSessions[0];
+                      const classInfo = karateClasses.find((item) => item.id === session.classId) ?? karateClasses[0];
+
+                      return (
+                        <div key={booking.id} className="rounded-2xl border-2 border-[#d4ae3e] bg-[#f9f4ea] p-4">
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">
+                            {getSessionDisplayName(session, classInfo.name)}
+                          </p>
+                          <h5 className="mt-2 text-lg font-black text-[#111111]">Child: {booking.childName}</h5>
+                          <p className="mt-1 text-sm text-[#3c3c3c]">Session: {formatSessionLabel(session)}</p>
+                          <p className="mt-1 text-sm text-[#3c3c3c]">Status: {booking.status === "confirmed" ? "Confirmed" : "Cancelled"}</p>
+
+                          <div className="mt-4 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEditBooking(booking.id)}
+                              className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCancel(booking.sessionId)}
+                              className="rounded-full border border-[#8a2424] bg-[#f6d9d9] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-6 rounded-[20px] border-2 border-dashed border-[#c7a531] bg-[#fffdf8] p-5 text-center">
+                  <p className="text-sm font-semibold text-[#3b3b3b]">No bookings yet.</p>
+                  <p className="mt-1 text-sm text-[#5a5a5a]">Choose a session below to reserve a spot for a family member.</p>
+                </div>
+              )}
 
               {viewMode === "monthly" ? (
                 <div className="overflow-hidden rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8]">
@@ -514,7 +1111,7 @@ export default function ParentDashboardPage() {
                                   booking.parentName === currentParentName,
                               );
                               const classInfo = karateClasses.find((item) => item.id === session.classId);
-                              const shortLabel = classInfo?.name ?? "Class";
+                              const shortLabel = classInfo ? getSessionDisplayName(session, classInfo.name) : "Class";
 
                               return (
                                 <button
@@ -551,16 +1148,6 @@ export default function ParentDashboardPage() {
                 <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {sessionsByClass.map(({ classInfo, sessions }) => (
                     <div key={classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
-                      <div className="mb-4 border-b border-[#c7a531] pb-3">
-                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">
-                          {classInfo.ageGroup}
-                        </p>
-                        <h4 className="mt-2 text-2xl font-black uppercase text-[#111111]">
-                          {classInfo.name}
-                        </h4>
-                        <p className="mt-2 text-sm text-[#434343]">{classInfo.description}</p>
-                      </div>
-
                       <div className="space-y-3">
                         {sessions.map((session) => (
                           <BookingCard
@@ -568,6 +1155,7 @@ export default function ParentDashboardPage() {
                             session={session}
                             classInfo={classInfo}
                             bookings={bookings}
+                            guestBookings={guestBookings}
                             onBook={handleBook}
                             onCancel={handleCancel}
                             currentParentName={currentParentName}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminEmail, adminPassword, supabase } from "@/lib/supabase";
+import { adminEmail, adminPassword, getSupabaseUserRole, supabase } from "@/lib/supabase";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -24,23 +24,45 @@ export default function AdminLoginPage() {
     setError("");
 
     try {
-      if (supabase) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: trimmedEmail,
-          password: trimmedPassword,
-        });
+      let isAuthorized = false;
 
-        if (signInError) {
-          throw signInError;
+      if (supabase) {
+        try {
+          const { data, error: signInError } = await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password: trimmedPassword,
+          });
+
+          if (!signInError && data?.user) {
+            const role = (await getSupabaseUserRole()) || data.user.user_metadata?.role;
+            if (role === "admin" || trimmedEmail.toLowerCase() === adminEmail.toLowerCase()) {
+              isAuthorized = true;
+            }
+          }
+        } catch {
+          // Supabase auth failed or user not in Supabase Auth, proceed to fallback check
         }
       }
 
-      if (trimmedEmail !== adminEmail || trimmedPassword !== adminPassword) {
-        throw new Error("Invalid admin credentials.");
+      if (!isAuthorized && trimmedEmail.toLowerCase() === adminEmail.toLowerCase() && trimmedPassword === adminPassword) {
+        isAuthorized = true;
       }
 
-      localStorage.setItem("shorinryu-role", "admin");
-      router.push("/admin");
+      if (isAuthorized) {
+        if (supabase) {
+          try {
+            const role = await getSupabaseUserRole();
+            if (role && role !== "admin") {
+              await supabase.auth.signOut();
+            }
+          } catch {}
+        }
+        localStorage.setItem("shorinryu-role", "admin");
+        router.push("/admin");
+        return;
+      }
+
+      throw new Error("Invalid admin credentials.");
     } catch (submitError) {
       console.error("Admin login failed:", submitError);
       setError("Invalid admin credentials. Please check your email and password.");

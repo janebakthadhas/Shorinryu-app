@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getSessionAvailability,
+  getSessionDisplayName,
   initialBookings,
   initialSessions,
   karateClasses,
@@ -55,9 +56,9 @@ function BookingCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5d4408]">
-            {classInfo.name}
+            {getSessionDisplayName(session, classInfo.name)}
           </p>
-          <h3 className="mt-2 text-xl font-black text-[#111111]">
+          <h3 className="mt-2 text-xl font-black text-[#111111]" suppressHydrationWarning>
             {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
               weekday: "short",
               month: "short",
@@ -87,7 +88,6 @@ function BookingCard({
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-sm text-[#363636]">
           <p className="font-bold">{classInfo.instructor}</p>
-          <p>{classInfo.ageGroup}</p>
         </div>
 
         <button
@@ -103,11 +103,7 @@ function BookingCard({
   );
 }
 
-const DEFAULT_PARENT_ACCOUNTS = [
-  { email: "maya@example.com", password: "parent123", name: "Maya Lee" },
-  { email: "daniel@example.com", password: "parent123", name: "Daniel Price" },
-  { email: "priya@example.com", password: "parent123", name: "Priya Shah" },
-];
+const DEFAULT_PARENT_ACCOUNTS: Array<{ email: string; password: string; name: string }> = [];
 
 function getParentAccounts() {
   if (typeof window === "undefined") {
@@ -121,7 +117,10 @@ function getParentAccounts() {
   }
 
   try {
-    return JSON.parse(stored) as Array<{ email: string; password: string; name: string }>;
+    const accounts = JSON.parse(stored) as Array<{ email: string; password: string; name: string }>;
+    const realAccounts = accounts.filter((account) => !account.email.endsWith("@example.com") && account.email !== "parent@demo.com");
+    localStorage.setItem("shorinryu-parent-accounts", JSON.stringify(realAccounts));
+    return realAccounts;
   } catch {
     localStorage.setItem("shorinryu-parent-accounts", JSON.stringify(DEFAULT_PARENT_ACCOUNTS));
     return DEFAULT_PARENT_ACCOUNTS;
@@ -129,9 +128,29 @@ function getParentAccounts() {
 }
 
 export default function Home() {
-  const [bookings, setBookings] = useState<BookingRecord[]>(initialBookings);
+  const [bookings] = useState<BookingRecord[]>(() => {
+    if (typeof window === "undefined") return initialBookings;
+    try {
+      const stored = localStorage.getItem("shorinryu-admin-bookings");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBookings;
+    } catch {
+      return initialBookings;
+    }
+  });
+  const [guestBookings, setGuestBookings] = useState<Array<{ sessionId: string; status?: string }>>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem("shorinryu-guest-bookings");
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [showParentLogin, setShowParentLogin] = useState(false);
+  const [activePrimaryAction, setActivePrimaryAction] = useState<"login" | "create" | "guest" | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [parentEmail, setParentEmail] = useState("");
@@ -155,7 +174,33 @@ export default function Home() {
     }
   }, [router]);
 
-  const handleParentLogin = async () => {
+  const openParentLogin = () => {
+    setActivePrimaryAction("login");
+    setShowParentLogin(true);
+    setShowCreateAccount(false);
+    setGuestFlow("intro");
+    setParentError("");
+  };
+
+  const openCreateAccount = () => {
+    setActivePrimaryAction("create");
+    setShowCreateAccount(true);
+    setShowParentLogin(false);
+    setGuestFlow("intro");
+    setParentError("");
+  };
+
+  const openGuestBooking = () => {
+    setActivePrimaryAction("guest");
+    setShowParentLogin(false);
+    setShowCreateAccount(false);
+    setGuestFlow("details");
+    setParentError("");
+  };
+
+  const handleParentLogin = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+
     const trimmedEmail = parentEmail.trim();
     const trimmedPassword = parentPassword.trim();
 
@@ -334,54 +379,15 @@ export default function Home() {
     const existingGuestBookings = JSON.parse(localStorage.getItem("shorinryu-guest-bookings") ?? "[]") as Array<
       typeof guestBooking
     >;
+    const updatedGuestBookings = [...existingGuestBookings, guestBooking];
     localStorage.setItem(
       "shorinryu-guest-bookings",
-      JSON.stringify([...existingGuestBookings, guestBooking]),
+      JSON.stringify(updatedGuestBookings),
     );
+    setGuestBookings(updatedGuestBookings);
     setGuestToken(token);
     setGuestFlow("success");
     setParentError("");
-  };
-
-  const handleBook = (sessionId: string) => {
-    setBookings((current) => {
-      if (
-        current.some(
-          (booking) =>
-            booking.sessionId === sessionId &&
-            booking.parentName === "Maya Lee" &&
-            booking.status === "confirmed",
-        )
-      ) {
-        return current;
-      }
-
-      const newId = `booking-${Date.now()}`;
-      return [
-        ...current,
-        {
-          id: newId,
-          sessionId,
-          parentName: "Maya Lee",
-          parentEmail: "maya@example.com",
-          parentPhone: "(555) 212-0011",
-          childName: "Ava Lee",
-          status: "confirmed",
-        },
-      ];
-    });
-  };
-
-  const handleCancel = (sessionId: string) => {
-    setBookings((current) =>
-      current.map((booking) =>
-        booking.sessionId === sessionId &&
-        booking.parentName === "Maya Lee" &&
-        booking.status === "confirmed"
-          ? { ...booking, status: "cancelled" }
-          : booking,
-      ),
-    );
   };
 
   const sessionsByClass = useMemo(() => {
@@ -401,10 +407,7 @@ export default function Home() {
                 <div className="flex items-center justify-center gap-4 sm:justify-start">
                   <LogoMark />
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#583f09] sm:text-sm">
-                      Okinawa Shorin-Ryu
-                    </p>
-                    <h1 className="mt-2 text-xl font-black uppercase text-[#111111] sm:text-2xl">
+                    <h1 className="text-lg font-black uppercase text-[#111111] sm:text-xl">
                       Okinawa Shorin-Ryu Karate Do Bukenkan of USA
                     </h1>
                   </div>
@@ -412,12 +415,12 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowParentLogin(true);
-                    setShowCreateAccount(false);
-                    setParentError("");
-                  }}
-                  className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-[#171717] transition hover:brightness-110"
+                  onClick={openParentLogin}
+                  className={`rounded-full border px-5 py-3 text-xs font-black uppercase tracking-[0.12em] transition hover:brightness-110 ${
+                    activePrimaryAction === "login"
+                      ? "border-[#b88a17] bg-[#d9b344] text-[#171717] shadow-[0_0_0_3px_rgba(217,179,68,0.18)]"
+                      : "border-[#b88a17] bg-[#fffdf8] text-[#171717]"
+                  }`}
                 >
                   Parent login
                 </button>
@@ -427,29 +430,33 @@ export default function Home() {
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
               <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
                 <div>
-                  <h2 className="text-4xl font-black uppercase leading-tight text-[#111111] sm:text-5xl">
+                  <h2 className="text-3xl font-black uppercase leading-tight text-[#111111] sm:text-4xl">
                     Classes for families, beginners, and first-time guests.
                   </h2>
                   <p className="mt-4 max-w-xl text-base text-[#323232]">
                     Weekly karate classes in St. Johns County for kids, teens, and adults. Explore the schedule, create a parent account, or book a single guest trial session.
                   </p>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="mt-6 grid gap-3 sm:max-w-xl sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowCreateAccount(true);
-                        setShowParentLogin(false);
-                        setParentError("");
-                      }}
-                      className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
+                      onClick={openCreateAccount}
+                      className={`rounded-full border px-5 py-3 text-sm font-black uppercase tracking-[0.08em] transition hover:brightness-110 ${
+                        activePrimaryAction === "create"
+                          ? "border-[#b88a17] bg-[#d9b344] text-[#171717] shadow-[0_0_0_3px_rgba(217,179,68,0.18)]"
+                          : "border-[#b88a17] bg-[#fffdf8] text-[#171717]"
+                      }`}
                     >
                       Create account
                     </button>
                     <button
                       type="button"
-                      onClick={() => setGuestFlow("details")}
-                      className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
+                      onClick={openGuestBooking}
+                      className={`rounded-full border px-5 py-3 text-sm font-black uppercase tracking-[0.08em] transition hover:brightness-110 ${
+                        activePrimaryAction === "guest"
+                          ? "border-[#b88a17] bg-[#d9b344] text-[#171717] shadow-[0_0_0_3px_rgba(217,179,68,0.18)]"
+                          : "border-[#b88a17] bg-[#fffdf8] text-[#171717]"
+                      }`}
                     >
                       Book as guest
                     </button>
@@ -461,7 +468,7 @@ export default function Home() {
                   <div className="mt-4 space-y-3">
                     <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-[#5a4309]">Next class</p>
-                      <p className="mt-2 text-lg font-black text-[#111111]">Little Dragons</p>
+                      <p className="mt-2 text-lg font-black text-[#111111]">Class 1</p>
                       <p className="text-sm text-[#444444]">Thursday · 5:30 PM</p>
                     </div>
                     <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">
@@ -474,16 +481,16 @@ export default function Home() {
               </div>
             </section>
 
-            <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-[#111111]">
-              <div className="mb-5 text-center">
-                <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Parent login</p>
-                <h3 className="mt-2 text-2xl font-black uppercase text-[#111111] sm:text-3xl">
-                  Okinawa Shorin-Ryu Karate Do Bukenkan of USA
-                </h3>
-              </div>
+            {(showParentLogin || showCreateAccount || activePrimaryAction === "guest") && (
+              <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-[#111111] shadow-[0_0_0_4px_rgba(199,165,49,0.12)]">
+                <div className="mb-5 text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">
+                    {activePrimaryAction === "guest" ? "Book as guest" : showCreateAccount ? "Create account" : "Parent login"}
+                  </p>
+                </div>
 
-              {showParentLogin ? (
-                <div className="grid gap-3 sm:grid-cols-[1.1fr_1fr_auto]">
+                {showParentLogin ? (
+                  <form onSubmit={handleParentLogin} className="grid gap-3 sm:grid-cols-[1.1fr_1fr_auto]">
                   <input
                     type="email"
                     value={parentEmail}
@@ -499,21 +506,22 @@ export default function Home() {
                     className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c]"
                   />
                   <button
-                    type="button"
-                    onClick={handleParentLogin}
+                    type="submit"
                     className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
                   >
                     Login
                   </button>
-                </div>
+                </form>
               ) : (
                 <p className="text-center text-sm text-[#444444]">
-                  Returning families can sign in here to view upcoming bookings and manage recurring classes.
+                  {activePrimaryAction === "guest"
+                    ? "One time trial booking"
+                    : "Returning families can sign in here to view upcoming bookings and manage recurring classes."}
                 </p>
               )}
 
-              {showCreateAccount ? (
-                <div className="mt-5 grid gap-3 text-left sm:grid-cols-2">
+                {showCreateAccount ? (
+                  <div className="mt-5 grid gap-3 text-left sm:grid-cols-2">
                   <input
                     type="text"
                     value={firstName}
@@ -542,90 +550,30 @@ export default function Home() {
                     placeholder="Create password"
                     className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c] sm:col-span-2"
                   />
-                  <div className="sm:col-span-2 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                    <button
-                      type="button"
-                      onClick={handleCreateAccount}
-                      className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
-                    >
-                      Create account
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateAccount(false)}
-                      className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              {parentError ? <p className="mt-3 text-sm font-semibold text-[#8b1e1e]">{parentError}</p> : null}
-            </section>
-
-            <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
-              <div className="mb-5 text-center">
-                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Public schedule</p>
-                <h3 className="mt-2 text-3xl font-black uppercase text-[#111111] sm:text-4xl">Upcoming classes</h3>
-              </div>
-
-              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {sessionsByClass.map(({ classInfo, sessions }) => (
-                  <div key={classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
-                    <div className="mb-4 border-b border-[#c7a531] pb-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">
-                        {classInfo.ageGroup}
-                      </p>
-                      <h4 className="mt-2 text-2xl font-black uppercase text-[#111111]">{classInfo.name}</h4>
-                    </div>
-
-                    <div className="space-y-3">
-                      {sessions.map((session) => {
-                        const availability = getSessionAvailability(session, bookings);
-                        return (
-                          <div key={session.id} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
-                            <p className="text-sm font-black text-[#111111]">
-                              {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
-                                weekday: "short",
-                                month: "short",
-                                day: "numeric",
-                              })}
-                            </p>
-                            <p className="mt-1 text-sm text-[#323232]">
-                              {new Date(`2000-01-01T${session.startTime}:00`).toLocaleTimeString([], {
-                                hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true,
-                              })}
-                              –
-                              {new Date(`2000-01-01T${session.endTime}:00`).toLocaleTimeString([], {
-                                hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true,
-                              })}
-                            </p>
-                            <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
-                              {availability.isFull ? "Closed" : `${availability.open} spots open`}
-                            </p>
-                          </div>
-                        );
-                      })}
+                    <div className="sm:col-span-2 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                      <button
+                        type="button"
+                        onClick={handleCreateAccount}
+                        className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
+                      >
+                        Create account
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateAccount(false);
+                          setActivePrimaryAction(null);
+                        }}
+                        className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
+                ) : null}
 
-            {guestFlow !== "intro" ? (
-              <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-[#111111]">
-                {guestFlow === "details" ? (
-                  <>
-                    <div className="mb-4 text-center">
-                      <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Book as guest</p>
-                      <h3 className="mt-2 text-3xl font-black uppercase text-[#111111]">One-time trial booking</h3>
-                    </div>
-
+                {activePrimaryAction === "guest" && guestFlow === "details" ? (
+                  <div className="mt-5 rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                     <div className="grid gap-4 md:grid-cols-2">
                       <input
                         type="text"
@@ -656,7 +604,7 @@ export default function Home() {
                           const classInfo = karateClasses.find((klass) => klass.id === session.classId);
                           return (
                             <option key={session.id} value={session.id}>
-                              {classInfo?.name} · {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
+                              {getSessionDisplayName(session, classInfo?.name ?? "Class")} · {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
                                 weekday: "short",
                                 month: "short",
                                 day: "numeric",
@@ -677,44 +625,106 @@ export default function Home() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setGuestFlow("intro")}
+                        onClick={() => {
+                          setGuestFlow("intro");
+                          setActivePrimaryAction(null);
+                        }}
                         className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
                       >
                         Back
                       </button>
                     </div>
-                  </>
-                ) : (
-                  <div className="text-center">
-                    <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Booking confirmed</p>
-                    <h3 className="mt-3 text-3xl font-black uppercase text-[#111111]">You’re on the list.</h3>
-                    <p className="mt-3 text-base text-[#323232]">
-                      A magic-link confirmation would be sent to <span className="font-bold">{guestEmail}</span> with a secure way to view or cancel this single booking.
-                    </p>
-                    <p className="mt-4 text-sm font-semibold text-[#3b3b3b]">
-                      Booking token: <span className="font-black text-[#171717]">{guestToken}</span>
-                    </p>
-                    <div className="mt-5 rounded-2xl border border-[#d9bb5c] bg-[#fffdf8] p-4 text-left text-sm text-[#323232]">
-                      Want a faster path for future bookings? Create an account to manage your child profile, recurring sessions, and booking history.
-                    </div>
-                    <div className="mt-5 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGuestFlow("intro");
-                          setGuestName("");
-                          setGuestEmail("");
-                          setGuestToken("");
-                        }}
-                        className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
-                      >
-                        Book another guest slot
-                      </button>
-                    </div>
                   </div>
-                )}
+                ) : null}
+
+                {parentError ? <p className="mt-3 text-sm font-semibold text-[#8b1e1e]">{parentError}</p> : null}
+              </section>
+            )}
+
+            {guestFlow === "success" ? (
+              <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-[#111111]">
+                <div className="text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">Booking confirmed</p>
+                  <h3 className="mt-3 text-3xl font-black uppercase text-[#111111]">You’re on the list.</h3>
+                  <p className="mt-3 text-base text-[#323232]">
+                    A magic-link confirmation would be sent to <span className="font-bold">{guestEmail}</span> with a secure way to view or cancel this single booking.
+                  </p>
+                  <p className="mt-4 text-sm font-semibold text-[#3b3b3b]">
+                    Booking token: <span className="font-black text-[#171717]">{guestToken}</span>
+                  </p>
+                  <div className="mt-5 rounded-2xl border border-[#d9bb5c] bg-[#fffdf8] p-4 text-left text-sm text-[#323232]">
+                    Want a faster path for future bookings? Create an account to manage your child profile, recurring sessions, and booking history.
+                  </div>
+                  <div className="mt-5 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGuestFlow("intro");
+                        setActivePrimaryAction(null);
+                        setGuestName("");
+                        setGuestEmail("");
+                        setGuestToken("");
+                      }}
+                      className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
+                    >
+                      Book another guest slot
+                    </button>
+                  </div>
+                </div>
               </section>
             ) : null}
+
+            <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
+              <div className="mb-5 flex flex-col gap-1 text-center sm:flex-row sm:items-end sm:justify-between sm:text-left">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Public schedule</p>
+                  <h3 className="mt-2 text-2xl font-black uppercase text-[#111111] sm:text-3xl">Upcoming classes</h3>
+                </div>
+                <p className="text-sm font-semibold text-[#4a4a4a]">Choose a session to see availability.</p>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {sessionsByClass.map(({ classInfo, sessions }) => (
+                  <div key={classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                    <div className="space-y-3">
+                      {sessions.map((session) => {
+                        const availability = getSessionAvailability(session, bookings, guestBookings);
+                        return (
+                          <div key={session.id} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
+                            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#5a4309]">
+                              {getSessionDisplayName(session, classInfo.name)}
+                            </p>
+                            <p className="text-sm font-black text-[#111111]" suppressHydrationWarning>
+                              {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </p>
+                            <p className="mt-1 text-sm text-[#323232]">
+                              {new Date(`2000-01-01T${session.startTime}:00`).toLocaleTimeString([], {
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true,
+                              })}
+                              –
+                              {new Date(`2000-01-01T${session.endTime}:00`).toLocaleTimeString([], {
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true,
+                              })}
+                            </p>
+                            <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
+                              {availability.isFull ? "Closed" : `${availability.open} spots open`}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
             <div className="mt-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-center text-[#111111]">
               <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">About the academy</p>
