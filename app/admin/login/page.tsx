@@ -6,8 +6,8 @@ import { adminEmail, adminPassword, getSupabaseUserRole, supabase } from "@/lib/
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState(adminEmail);
-  const [password, setPassword] = useState(adminPassword);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,16 +35,16 @@ export default function AdminLoginPage() {
 
           if (!signInError && data?.user) {
             const role = (await getSupabaseUserRole()) || data.user.user_metadata?.role;
-            if (role === "admin" || trimmedEmail.toLowerCase() === adminEmail.toLowerCase()) {
+            if (role === "admin") {
               isAuthorized = true;
             }
           }
         } catch {
-          // Supabase auth failed or user not in Supabase Auth, proceed to fallback check
+          // Supabase auth failed or user is not an admin.
         }
       }
 
-      if (!isAuthorized && trimmedEmail.toLowerCase() === adminEmail.toLowerCase() && trimmedPassword === adminPassword) {
+      if (!supabase && trimmedEmail.toLowerCase() === adminEmail.toLowerCase() && trimmedPassword === adminPassword) {
         isAuthorized = true;
       }
 

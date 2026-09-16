@@ -11,7 +11,7 @@ import {
   type BookingRecord,
   type SessionRecord,
 } from "@/lib/mock-data";
-import { adminEmail, adminPassword, supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 function LogoMark() {
   return (

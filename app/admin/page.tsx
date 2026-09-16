@@ -168,7 +168,7 @@ export default function AdminPage() {
     const hydrateAdminAccess = async () => {
       const storedRole = localStorage.getItem("shorinryu-role");
 
-      if (storedRole === "admin") {
+      if (!supabase && storedRole === "admin") {
         const storedBookings = localStorage.getItem(BOOKINGS_STORAGE_KEY);
         if (storedBookings) {
           try {
@@ -208,12 +208,13 @@ export default function AdminPage() {
         }
       }
 
-      if (storedRole !== "admin") {
-        router.push("/admin/login");
+      if (!supabase && storedRole === "admin") {
+        setIsAdmin(true);
         return;
       }
 
-      setIsAdmin(true);
+      localStorage.removeItem("shorinryu-role");
+      router.push("/admin/login");
     };
 
     void hydrateAdminAccess();
