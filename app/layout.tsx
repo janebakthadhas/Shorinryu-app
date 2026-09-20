@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Okinawa Shorin-Ryu Karate Do Bukenkan of USA",
   description: "Live class scheduling and booking dashboard for Okinawa Shorin-Ryu Karate Do Bukenkan of USA.",
+  icons: {
+    icon: "https://www.shorinryubukenkan.com/storage/images/logo.png",
+    shortcut: "https://www.shorinryubukenkan.com/storage/images/logo.png",
+    apple: "https://www.shorinryubukenkan.com/storage/images/logo.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
