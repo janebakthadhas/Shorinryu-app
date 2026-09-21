@@ -9,7 +9,35 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handlePasswordRecovery = async () => {
+    const trimmedEmail = email.trim();
+    setError("");
+    setRecoveryMessage("");
+
+    if (!supabase) {
+      setError("Password recovery is not available in demo mode.");
+      return;
+    }
+
+    if (!trimmedEmail) {
+      setError("Enter your admin email first.");
+      return;
+    }
+
+    const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (recoveryError) {
+      setError(recoveryError.message);
+      return;
+    }
+
+    setRecoveryMessage("Check your email for a password recovery link.");
+  };
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim();
@@ -110,6 +138,15 @@ export default function AdminLoginPage() {
           </div>
 
           {error ? <p className="text-sm font-semibold text-[#8b1e1e]">{error}</p> : null}
+          {recoveryMessage ? <p className="text-sm font-semibold text-[#1e5b2d]">{recoveryMessage}</p> : null}
+
+          <button
+            type="button"
+            onClick={handlePasswordRecovery}
+            className="text-left text-sm font-bold text-[#5a4309] underline underline-offset-4"
+          >
+            Forgot password?
+          </button>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
             <button
