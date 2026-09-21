@@ -128,6 +128,7 @@ function getParentAccounts() {
 }
 
 export default function Home() {
+  const [isHydrated, setIsHydrated] = useState(false);
   const [bookings] = useState<BookingRecord[]>(() => {
     if (typeof window === "undefined") return initialBookings;
     try {
@@ -168,6 +169,7 @@ export default function Home() {
       return;
     }
 
+    requestAnimationFrame(() => setIsHydrated(true));
     const savedRole = localStorage.getItem("shorinryu-role");
     if (savedRole === "parent") {
       router.push("/parent");
@@ -396,6 +398,10 @@ export default function Home() {
       sessions: initialSessions.filter((session) => session.classId === klass.id),
     }));
   }, []);
+
+  if (!isHydrated) {
+    return <main className="min-h-screen bg-[#ece7dc]" />;
+  }
 
   return (
     <main className="min-h-screen bg-[#ece7dc] px-4 py-8 text-[#1d1d1d]">
