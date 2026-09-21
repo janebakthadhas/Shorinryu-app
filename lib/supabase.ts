@@ -29,11 +29,6 @@ export async function getSupabaseUserRole(): Promise<"admin" | "parent" | null> 
     return null;
   }
 
-  const metadataRole = session.user.user_metadata?.role;
-  if (metadataRole === "admin" || metadataRole === "parent") {
-    return metadataRole;
-  }
-
   const { data, error } = await supabase
     .from("profiles")
     .select("role")
@@ -41,7 +36,8 @@ export async function getSupabaseUserRole(): Promise<"admin" | "parent" | null> 
     .maybeSingle();
 
   if (error || !data) {
-    return null;
+    const metadataRole = session.user.user_metadata?.role;
+    return metadataRole === "admin" || metadataRole === "parent" ? metadataRole : null;
   }
 
   return data.role === "admin" || data.role === "parent" ? data.role : null;
