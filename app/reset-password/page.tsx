@@ -24,6 +24,12 @@ export default function ResetPasswordPage() {
       }
     });
 
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const recoveryError = hashParams.get("error_description");
+    if (recoveryError) {
+      setError(recoveryError.replace(/\+/g, " "));
+    }
+
     void supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsReady(true);

@@ -170,6 +170,12 @@ export default function Home() {
     }
 
     requestAnimationFrame(() => setIsHydrated(true));
+    const recoveryHash = window.location.hash;
+    if (recoveryHash.includes("access_token=") || recoveryHash.includes("type=recovery") || recoveryHash.includes("error_code=")) {
+      router.replace(`/reset-password${recoveryHash}`);
+      return;
+    }
+
     const savedRole = localStorage.getItem("shorinryu-role");
     if (savedRole === "parent") {
       router.push("/parent");
@@ -240,6 +246,8 @@ export default function Home() {
         return;
       } catch (error) {
         console.error("Parent sign-in failed:", error);
+        setParentError("Unable to sign in with the production account. Please check your credentials and try again.");
+        return;
       }
     }
 
@@ -317,6 +325,8 @@ export default function Home() {
         return;
       } catch (error) {
         console.error("Parent account creation failed:", error);
+        setParentError(error instanceof Error ? error.message : "Unable to create the parent account.");
+        return;
       }
     }
 
