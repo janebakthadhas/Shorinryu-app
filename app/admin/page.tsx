@@ -13,7 +13,17 @@ import {
   sortSessionsByDateTime,
   type BookingRecord,
 } from "@/lib/mock-data";
-import { getSupabaseBookings, getSupabaseUserRole, supabase } from "@/lib/supabase";
+import {
+  cancelSupabaseBooking,
+  createSupabaseBookingAsAdmin,
+  createSupabaseStudent,
+  getSupabaseBookings,
+  getSupabaseSessions,
+  getSupabaseStudents,
+  getSupabaseUserRole,
+  supabase,
+  updateSupabaseBooking,
+} from "@/lib/supabase";
 
 function LogoMark() {
   return (
@@ -104,6 +114,7 @@ export default function AdminPage() {
     }
   });
   const [studentRoster, setStudentRoster] = useState<StudentRecord[]>(DEFAULT_STUDENT_ROSTER);
+  const [supabaseSessions, setSupabaseSessions] = useState<Awaited<ReturnType<typeof getSupabaseSessions>>>([]);
   const [registeredStudents, setRegisteredStudents] = useState<RegisteredStudent[]>([]);
   const [registeredParents, setRegisteredParents] = useState<Array<{ name: string; email: string; children: string[] }>>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -126,7 +137,10 @@ export default function AdminPage() {
   const [studentError, setStudentError] = useState("");
   const router = useRouter();
 
-  const allSessions = useMemo(() => [...initialSessions, ...buildMonthlySessions()], []);
+  const allSessions = useMemo(
+    () => (supabaseSessions.length > 0 ? supabaseSessions : [...initialSessions, ...buildMonthlySessions()]),
+    [supabaseSessions],
+  );
 
   useEffect(() => {
     const loadParentRegistry = () => {
@@ -203,11 +217,23 @@ export default function AdminPage() {
 
           if (role === "admin") {
             setIsAdmin(true);
+            setSupabaseSessions(await getSupabaseSessions());
+            const persistedStudents = await getSupabaseStudents();
+            setStudentRoster(persistedStudents.map((student) => ({
+              name: student.name,
+              parent: student.parentName,
+              parentEmail: student.parentEmail,
+              parentPhone: student.parentPhone,
+              belt: student.belt,
+              className: student.baseClassName,
+              classTime: student.baseClassTime,
+              baseClassDays: student.baseClassDays,
+              baseClassName: student.baseClassName,
+              baseClassTime: student.baseClassTime,
+            })));
             const nextBookings = await getSupabaseBookings();
-            if (nextBookings.length > 0) {
-              setBookings(nextBookings);
-              localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
-            }
+            setBookings(nextBookings);
+            localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
             return;
           }
         }
@@ -390,7 +416,7 @@ export default function AdminPage() {
     });
   };
 
-  const saveBookingChanges = () => {
+  const saveBookingChanges = async () => {
     if (!bookingEditor) {
       return;
     }
@@ -427,6 +453,16 @@ export default function AdminPage() {
       status: draft.status === "cancelled" ? "cancelled" : "confirmed",
     };
 
+    if (supabase) {
+      const result = draft.id
+        ? await updateSupabaseBooking({ bookingId: draft.id, sessionId: nextBooking.sessionId, childName: nextBooking.childName, status: nextBooking.status })
+        : await createSupabaseBookingAsAdmin(nextBooking);
+      if (!result.ok) {
+        setBookingError(result.message ?? "Unable to save booking.");
+        return;
+      }
+    }
+
     setBookings((current) => {
       const filtered = current.filter((booking) => booking.id !== nextBooking.id);
       const nextList = [...filtered, nextBooking];
@@ -438,7 +474,14 @@ export default function AdminPage() {
     setBookingError("");
   };
 
-  const handleDeleteBooking = (bookingId: string) => {
+  const handleDeleteBooking = async (bookingId: string) => {
+    if (supabase) {
+      const result = await cancelSupabaseBooking(bookingId);
+      if (!result.ok) {
+        setBookingError(result.message ?? "Unable to cancel booking.");
+        return;
+      }
+    }
     setBookings((current) => {
       const nextList = current.filter((booking) => booking.id !== bookingId);
       localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
@@ -470,7 +513,7 @@ export default function AdminPage() {
     });
   };
 
-  const saveStudentChanges = () => {
+  const saveStudentChanges = async () => {
     if (!studentEditor) {
       return;
     }
@@ -498,7 +541,24 @@ export default function AdminPage() {
       return;
     }
 
-    const selectedSession = [...initialSessions, ...buildMonthlySessions()].find((session) => {
+    if (supabase) {
+      const result = await createSupabaseStudent({
+        name: nextName,
+        parentName: nextParent,
+        parentEmail: nextParentEmail,
+        parentPhone: draft.parentPhone?.trim() || undefined,
+        belt: draft.belt || "White",
+        baseClassDays: draft.baseClassDays,
+        baseClassName: draft.baseClassName,
+        baseClassTime: draft.baseClassTime,
+      });
+      if (!result.ok) {
+        setStudentError(result.message ?? "Unable to save student.");
+        return;
+      }
+    }
+
+    const selectedSession = allSessions.find((session) => {
       const classInfo = karateClasses.find((klass) => klass.id === session.classId);
       return (
         session.date === draft.classDate &&
@@ -548,33 +608,37 @@ export default function AdminPage() {
     }
 
     if (selectedSession) {
-      setBookings((current) => {
-        const alreadyBooked = current.some(
-          (booking) =>
-            booking.sessionId === selectedSession.id &&
-            booking.parentName.toLowerCase() === nextParent.toLowerCase() &&
-            booking.childName.toLowerCase() === nextName.toLowerCase(),
-        );
+      const alreadyBooked = bookings.some(
+        (booking) =>
+          booking.sessionId === selectedSession.id &&
+          booking.parentName.toLowerCase() === nextParent.toLowerCase() &&
+          booking.childName.toLowerCase() === nextName.toLowerCase(),
+      );
 
-        if (alreadyBooked) {
-          return current;
+      if (!alreadyBooked) {
+        const studentBooking: Omit<BookingRecord, "id"> = {
+          sessionId: selectedSession.id,
+          parentName: nextParent,
+          parentEmail: nextParentEmail,
+          parentPhone: draft.parentPhone?.trim() || undefined,
+          childName: nextName,
+          status: "confirmed",
+        };
+        let persistedBookingId: string | undefined;
+        if (supabase) {
+          const bookingResult = await createSupabaseBookingAsAdmin(studentBooking);
+          if (!bookingResult.ok) {
+            setStudentError(bookingResult.message ?? "Unable to save the Base Class booking.");
+            return;
+          }
+          persistedBookingId = bookingResult.bookingId;
         }
-
-        const nextList = [
-          ...current,
-          {
-            id: `booking-admin-${Date.now()}`,
-            sessionId: selectedSession.id,
-            parentName: nextParent,
-            parentEmail: nextParentEmail,
-            parentPhone: draft.parentPhone?.trim() || undefined,
-            childName: nextName,
-            status: "confirmed" as const,
-          },
-        ];
-        localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
-        return nextList;
-      });
+        setBookings((current) => {
+          const nextList = [...current, { ...studentBooking, id: persistedBookingId ?? `booking-admin-${Date.now()}` }];
+          localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
+          return nextList;
+        });
+      }
     }
 
     setStudentEditor(null);

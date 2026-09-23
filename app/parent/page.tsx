@@ -18,6 +18,7 @@ import {
   cancelSupabaseBooking,
   createSupabaseBooking,
   getSupabaseBookingsForParent,
+  getSupabaseStudents,
   supabase,
   updateSupabaseBooking,
 } from "@/lib/supabase";
@@ -274,6 +275,25 @@ export default function ParentDashboardPage() {
 
     void hydrateParentSession();
   }, [router]);
+
+  useEffect(() => {
+    const syncStudents = async () => {
+      if (!supabase || !currentParent?.email) return;
+      const persistedStudents = await getSupabaseStudents();
+      const parentChildren = persistedStudents
+        .filter((student) => student.parentEmail.toLowerCase() === currentParent.email.toLowerCase())
+        .map((student) => ({
+          name: student.name,
+          belt: student.belt,
+          baseClassDays: student.baseClassDays,
+          baseClassName: student.baseClassName,
+          baseClassTime: student.baseClassTime,
+        }));
+      if (parentChildren.length > 0) setChildren(parentChildren);
+    };
+
+    void syncStudents();
+  }, [currentParent]);
 
   useEffect(() => {
     const syncBookings = async () => {

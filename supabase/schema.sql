@@ -33,6 +33,19 @@ create table if not exists public.bookings (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.students (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  parent_name text not null,
+  parent_email text not null,
+  parent_phone text,
+  belt text not null default 'White',
+  base_class_days text[] not null default '{}',
+  base_class_name text not null,
+  base_class_time text not null,
+  created_at timestamptz not null default now()
+);
+
 create unique index if not exists bookings_one_confirmed_per_student_session
 on public.bookings (session_id, lower(parent_email), lower(child_name))
 where status = 'confirmed';
@@ -143,6 +156,7 @@ alter table public.classes enable row level security;
 alter table public.sessions enable row level security;
 alter table public.bookings enable row level security;
 alter table public.profiles enable row level security;
+alter table public.students enable row level security;
 
 drop policy if exists "Public can read classes" on public.classes;
 drop policy if exists "Public can read sessions" on public.sessions;
@@ -156,6 +170,9 @@ drop policy if exists "Admins can read all bookings" on public.bookings;
 drop policy if exists "Parents can read own bookings" on public.bookings;
 drop policy if exists "Parents can update own bookings" on public.bookings;
 drop policy if exists "Admins can update all bookings" on public.bookings;
+drop policy if exists "Admins can read all students" on public.students;
+drop policy if exists "Admins can insert students" on public.students;
+drop policy if exists "Parents can read own students" on public.students;
 
 create policy "Public can read classes"
 on public.classes for select using (true);
@@ -219,6 +236,27 @@ on public.bookings for update using (
     select 1 from public.profiles p
     where p.id = auth.uid() and p.role = 'admin'
   )
+);
+
+create policy "Admins can read all students"
+on public.students for select using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+create policy "Admins can insert students"
+on public.students for insert with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+);
+
+create policy "Parents can read own students"
+on public.students for select using (
+  lower(parent_email) = lower(auth.jwt() ->> 'email')
 );
 
 -- Seed the default classes used by the app.
