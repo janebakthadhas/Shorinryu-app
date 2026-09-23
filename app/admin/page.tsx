@@ -1651,6 +1651,10 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                <div className="mb-4">
+                  <h5 className="text-lg font-black uppercase tracking-[0.12em] text-[#111111]">Base Class</h5>
+                  <p className="mt-1 text-xs text-[#4a4a4a]">Recurring assignments grouped by class. Admins can edit or cancel the associated booking.</p>
+                </div>
                 {baseClassRosterByName.length > 0 ? (
                   <div className="space-y-4">
                     {baseClassRosterByName.map(([className, students]) => (
@@ -1662,6 +1666,15 @@ export default function AdminPage() {
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                           {students.map((student) => (
                             <div key={`${className}-${student.name}-${student.parent}`} className="rounded-2xl border border-[#eadcb0] bg-[#f9f4ea] p-4">
+                              {(() => {
+                                const baseBooking = bookings.find(
+                                  (booking) =>
+                                    baseAssignmentBookingIds.has(booking.id) &&
+                                    booking.childName.trim().toLowerCase() === student.name.trim().toLowerCase(),
+                                );
+
+                                return (
+                                  <>
                               <span className="rounded-full border border-[#c7a531] bg-[#fffdf8] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171717]">{student.belt}</span>
                               <p className="mt-3 text-lg font-black text-[#111111]">{student.name}</p>
                               <p className="mt-1 text-sm text-[#3b3b3b]">Parent: {student.parent}</p>
@@ -1674,6 +1687,27 @@ export default function AdminPage() {
                               >
                                 View details
                               </button>
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={!baseBooking}
+                                  onClick={() => baseBooking && openEditBooking(baseBooking)}
+                                  className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717] disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!baseBooking}
+                                  onClick={() => baseBooking && handleDeleteBooking(baseBooking.id)}
+                                  className="rounded-full border border-[#8a2424] bg-[#f6d9d9] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717] disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           ))}
                         </div>

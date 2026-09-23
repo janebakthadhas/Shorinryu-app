@@ -412,6 +412,33 @@ export default function ParentDashboardPage() {
       ),
     [bookings, currentParent?.email, currentParentName],
   );
+  const baseAssignmentBookingIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    bookings.forEach((booking) => {
+      const session = allSessions.find((item) => item.id === booking.sessionId);
+      if (!session) return;
+
+      const sessionClassName = getSessionDisplayName(
+        session,
+        karateClasses.find((klass) => klass.id === session.classId)?.name ?? "Class",
+      );
+      const sessionDay = new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long" });
+      const matchesAssignment = children.some((child) =>
+        child.name.trim().toLowerCase() === booking.childName.trim().toLowerCase() &&
+        (child.baseClassName || child.className) === sessionClassName &&
+        (child.baseClassDays ?? []).includes(sessionDay),
+      );
+
+      if (matchesAssignment) ids.add(booking.id);
+    });
+
+    return ids;
+  }, [allSessions, bookings, children]);
+  const additionalClassBookings = useMemo(
+    () => myBookings.filter((booking) => !baseAssignmentBookingIds.has(booking.id)),
+    [baseAssignmentBookingIds, myBookings],
+  );
   const isDuplicateBooking = Boolean(
     bookingEditor &&
       bookingEditor.draft.status === "confirmed" &&
@@ -1131,17 +1158,17 @@ export default function ParentDashboardPage() {
                 </button>
               </div>
 
-              {myBookings.length > 0 ? (
+              {additionalClassBookings.length > 0 ? (
                 <div className="mb-6 rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">My bookings</p>
-                      <h4 className="mt-2 text-2xl font-black uppercase text-[#111111]">Upcoming reservations</h4>
+                      <h4 className="mt-2 text-2xl font-black uppercase text-[#111111]">Additional Class Bookings</h4>
                     </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {myBookings.map((booking) => {
+                    {additionalClassBookings.map((booking) => {
                       const session = allSessions.find((item) => item.id === booking.sessionId) ?? initialSessions[0];
                       const classInfo = karateClasses.find((item) => item.id === session.classId) ?? karateClasses[0];
 
