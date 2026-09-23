@@ -97,6 +97,19 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 create or replace function public.book_slot(
   p_session_id uuid,
   p_parent_name text,
@@ -189,10 +202,7 @@ on public.bookings for insert with check (
 
 create policy "Admins can insert bookings"
 on public.bookings for insert with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Users can view own profile"
@@ -203,18 +213,12 @@ on public.profiles for update using (auth.uid() = id);
 
 create policy "Admins can read all profiles"
 on public.profiles for select using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Admins can read all bookings"
 on public.bookings for select using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Parents can read own bookings"
@@ -232,26 +236,17 @@ with check (
 
 create policy "Admins can update all bookings"
 on public.bookings for update using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Admins can read all students"
 on public.students for select using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Admins can insert students"
 on public.students for insert with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'admin'
-  )
+  public.is_admin()
 );
 
 create policy "Parents can read own students"
