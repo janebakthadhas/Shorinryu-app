@@ -125,14 +125,6 @@ export function getSessionAvailability(
 }
 
 export function getSessionDisplayName(session: SessionRecord, fallbackName: string) {
-  const weekday = new Date(`${session.date}T00:00:00`).getDay();
-
-  if (weekday === 4 && session.startTime === "17:30") return "Class 1";
-  if (weekday === 4 && session.startTime === "18:45") return "Class 2";
-  if (weekday === 5 && session.startTime === "17:30") return "Class 3";
-  if (weekday === 5 && session.startTime === "18:45") return "Class 4";
-  if (weekday === 6) return "Early Birds";
-
   return fallbackName;
 }
 
