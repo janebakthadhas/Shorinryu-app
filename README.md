@@ -34,6 +34,15 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 	- confirm the Admin account can see and override the records
 	- confirm a guest booking appears only in the Admin guest list
 
+### Easier admin setup
+
+For a one-time admin setup without editing `profiles` manually, add these Vercel Production variables:
+
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase Project Settings → API → service-role key. Keep this server-only.
+- `ADMIN_SETUP_TOKEN`: generate a long random token and keep it private.
+
+After deploying, open `/admin/setup`, enter the setup token, admin email, and password, then sign in at `/admin/login`. Remove both setup variables from Vercel after the account is ready and use password recovery for future password changes.
+
 The localStorage fallback is for offline demos only. It is not an acceptable production security boundary because browser users can inspect or change it. Production data access should use Supabase with the SQL policies applied.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
