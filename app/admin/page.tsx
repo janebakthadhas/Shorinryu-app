@@ -328,7 +328,7 @@ export default function AdminPage() {
   );
 
   const bookingsByClass = useMemo(() => {
-    const groups = new Map<string, BookingRecord[]>();
+    const groups = new Map<string, { className: string; bookings: BookingRecord[] }>();
 
     bookings.forEach((booking) => {
       const session = allSessions.find((item) => item.id === booking.sessionId);
@@ -336,13 +336,26 @@ export default function AdminPage() {
       const className = session && classInfo
         ? getSessionDisplayName(session, classInfo.name)
         : "Class unavailable";
-      const existingBookings = groups.get(className) ?? [];
-      groups.set(className, [...existingBookings, booking]);
+      const group = groups.get(className) ?? { className, bookings: [] };
+      group.bookings.push(booking);
+      groups.set(className, group);
     });
 
-    return [...groups.entries()].map(([className, classBookings]) => ({
-      className,
-      bookings: classBookings,
+    return [...groups.values()].sort((left, right) => {
+      const leftSession = allSessions.find((session) => session.id === left.bookings[0]?.sessionId);
+      const rightSession = allSessions.find((session) => session.id === right.bookings[0]?.sessionId);
+      const leftDateTime = leftSession ? `${leftSession.date}T${leftSession.startTime}` : "9999-12-31T23:59";
+      const rightDateTime = rightSession ? `${rightSession.date}T${rightSession.startTime}` : "9999-12-31T23:59";
+      return leftDateTime.localeCompare(rightDateTime) || left.className.localeCompare(right.className);
+    }).map((group) => ({
+      ...group,
+      bookings: [...group.bookings].sort((left, right) => {
+        const leftSession = allSessions.find((session) => session.id === left.sessionId);
+        const rightSession = allSessions.find((session) => session.id === right.sessionId);
+        const leftDateTime = leftSession ? `${leftSession.date}T${leftSession.startTime}` : "9999-12-31T23:59";
+        const rightDateTime = rightSession ? `${rightSession.date}T${rightSession.startTime}` : "9999-12-31T23:59";
+        return leftDateTime.localeCompare(rightDateTime) || left.childName.localeCompare(right.childName);
+      }),
     }));
   }, [bookings, allSessions]);
 
