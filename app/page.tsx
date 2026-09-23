@@ -485,7 +485,7 @@ export default function Home() {
                   <div className="mt-4 space-y-3">
                     <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-[#5a4309]">Next class</p>
-                      <p className="mt-2 text-lg font-black text-[#111111]">{karateClasses[0]?.name ?? "Class"}</p>
+                      <p className="mt-2 text-lg font-black text-[#111111]">Class 1</p>
                       <p className="text-sm text-[#444444]">Thursday · 5:30 PM</p>
                     </div>
                     <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">

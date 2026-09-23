@@ -588,7 +588,7 @@ export default function ParentDashboardPage() {
       name: trimmedChild,
       age: trimmedAge || "Not set",
       belt: "White",
-      className: karateClasses[0]?.name ?? "Class",
+      className: "Class 1",
       classTime: "Thursday 5:30 PM - 6:30 PM",
     }];
 

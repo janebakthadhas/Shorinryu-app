@@ -507,7 +507,7 @@ export default function AdminPage() {
         baseClassDays: STUDENT_SESSION_OPTIONS[0]?.date
           ? [new Date(`${STUDENT_SESSION_OPTIONS[0].date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long" })]
           : [],
-        baseClassName: STUDENT_SESSION_OPTIONS[0]?.name ?? karateClasses[0]?.name ?? "Class",
+        baseClassName: STUDENT_SESSION_OPTIONS[0]?.name ?? "Class 1",
         baseClassTime: STUDENT_SESSION_OPTIONS[0]?.time ?? "",
       },
     });
@@ -575,7 +575,7 @@ export default function AdminPage() {
         parentPhone: draft.parentPhone?.trim() || undefined,
         belt: draft.belt || "White",
         classDate: draft.classDate,
-        className: draft.className || karateClasses[0]?.name || "Class",
+        className: draft.className || "Class 1",
         classTime: draft.classTime || "",
         baseClassDays: draft.baseClassDays,
         baseClassName: draft.baseClassName,
@@ -1081,11 +1081,11 @@ export default function AdminPage() {
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <select
-                    value={studentEditor.draft.baseClassName ?? karateClasses[0]?.name ?? "Class"}
+                    value={studentEditor.draft.baseClassName ?? "Class 1"}
                     onChange={(event) => setStudentEditor((current) => current ? { ...current, draft: { ...current.draft, baseClassName: event.target.value } } : current)}
                     className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
                   >
-                    {karateClasses.map((klass) => <option key={klass.id} value={klass.name}>{klass.name}</option>)}
+                    {["Class 1", "Class 2", "Class 3", "Class 4", "Early birds"].map((label) => <option key={label} value={label}>{label}</option>)}
                   </select>
                   <select
                     value={studentEditor.draft.baseClassTime ?? ""}
