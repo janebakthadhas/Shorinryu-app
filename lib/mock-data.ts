@@ -136,6 +136,12 @@ export function getSessionDisplayName(session: SessionRecord, fallbackName: stri
   return fallbackName;
 }
 
+export function sortSessionsByDateTime(sessions: SessionRecord[]) {
+  return [...sessions].sort((left, right) =>
+    `${left.date}T${left.startTime}`.localeCompare(`${right.date}T${right.startTime}`),
+  );
+}
+
 export function formatSessionLabel(session: SessionRecord) {
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(":").map(Number);

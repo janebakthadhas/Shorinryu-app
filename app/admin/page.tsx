@@ -10,6 +10,7 @@ import {
   initialBookings,
   initialSessions,
   karateClasses,
+  sortSessionsByDateTime,
   type BookingRecord,
 } from "@/lib/mock-data";
 import { getSupabaseBookings, getSupabaseUserRole, supabase } from "@/lib/supabase";
@@ -54,6 +55,9 @@ type StudentRecord = {
   className: string;
   classDate?: string;
   classTime: string;
+  baseClassDays?: string[];
+  baseClassName?: string;
+  baseClassTime?: string;
 };
 
 const STUDENT_SESSION_OPTIONS = [...initialSessions, ...buildMonthlySessions()].map((session) => {
@@ -119,6 +123,7 @@ export default function AdminPage() {
     mode: "create";
     draft: StudentRecord;
   } | null>(null);
+  const [studentError, setStudentError] = useState("");
   const router = useRouter();
 
   const allSessions = useMemo(() => [...initialSessions, ...buildMonthlySessions()], []);
@@ -221,7 +226,7 @@ export default function AdminPage() {
   }, [router]);
 
   const activeSessions = useMemo(
-    () => (scheduleView === "weekly" ? initialSessions : allSessions),
+    () => sortSessionsByDateTime(scheduleView === "weekly" ? initialSessions : allSessions),
     [scheduleView, allSessions],
   );
 
@@ -430,6 +435,7 @@ export default function AdminPage() {
   };
 
   const openCreateStudent = () => {
+    setStudentError("");
     setStudentEditor({
       mode: "create",
       draft: {
@@ -442,6 +448,11 @@ export default function AdminPage() {
         classDate: STUDENT_SESSION_OPTIONS[0]?.date ?? "",
         className: STUDENT_SESSION_OPTIONS[0]?.name ?? "",
         classTime: STUDENT_SESSION_OPTIONS[0]?.time ?? "",
+        baseClassDays: STUDENT_SESSION_OPTIONS[0]?.date
+          ? [new Date(`${STUDENT_SESSION_OPTIONS[0].date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long" })]
+          : [],
+        baseClassName: STUDENT_SESSION_OPTIONS[0]?.name ?? "Class 1",
+        baseClassTime: STUDENT_SESSION_OPTIONS[0]?.time ?? "",
       },
     });
   };
@@ -457,6 +468,20 @@ export default function AdminPage() {
     const nextParentEmail = draft.parentEmail?.trim() ?? "";
 
     if (!nextName || !nextParent) {
+      return;
+    }
+
+    if (!draft.baseClassDays?.length || !draft.baseClassName || !draft.baseClassTime) {
+      setStudentError("Assign at least one Base Class day and time.");
+      return;
+    }
+
+    const baseSlotKey = `${draft.baseClassDays.join(",")}|${draft.baseClassName}|${draft.baseClassTime}`;
+    const assignedCount = studentRoster.filter((student) =>
+      `${student.baseClassDays?.join(",") ?? ""}|${student.baseClassName ?? student.className}|${student.baseClassTime ?? student.classTime}` === baseSlotKey,
+    ).length;
+    if (assignedCount >= 9) {
+      setStudentError("This Base Class slot is full. Choose another class or time.");
       return;
     }
 
@@ -479,9 +504,35 @@ export default function AdminPage() {
         classDate: draft.classDate,
         className: draft.className || "Class 1",
         classTime: draft.classTime || "",
+        baseClassDays: draft.baseClassDays,
+        baseClassName: draft.baseClassName,
+        baseClassTime: draft.baseClassTime,
       },
       ...current,
     ]);
+
+    try {
+      const registry = JSON.parse(localStorage.getItem("shorinryu-parent-registry") ?? "[]") as Array<{
+        name: string;
+        email: string;
+        password?: string;
+        children?: Array<Record<string, unknown>>;
+      }>;
+      const parentEntry = registry.find((entry) => entry.email.toLowerCase() === nextParentEmail.toLowerCase());
+      if (parentEntry) {
+        const existingChild = (parentEntry.children ?? []).some((child) => String(child.name).toLowerCase() === nextName.toLowerCase());
+        parentEntry.children = existingChild
+          ? (parentEntry.children ?? []).map((child) =>
+              String(child.name).toLowerCase() === nextName.toLowerCase()
+                ? { ...child, baseClassDays: draft.baseClassDays, baseClassName: draft.baseClassName, baseClassTime: draft.baseClassTime }
+                : child,
+            )
+          : [...(parentEntry.children ?? []), { name: nextName, age: "Not set", baseClassDays: draft.baseClassDays, baseClassName: draft.baseClassName, baseClassTime: draft.baseClassTime }];
+        localStorage.setItem("shorinryu-parent-registry", JSON.stringify(registry));
+      }
+    } catch {
+      // Keep the local student record usable if the optional registry is unavailable.
+    }
 
     if (selectedSession) {
       setBookings((current) => {
@@ -932,6 +983,44 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              <div className="rounded-[18px] border-2 border-[#c7a531] bg-[#f7f2ea] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class assignment</p>
+                <p className="mt-2 text-xs text-[#4a4a4a]">Recurring weekly schedule set by the admin. Maximum capacity is 9 students per slot.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => setStudentEditor((current) => {
+                        if (!current) return current;
+                        const days = current.draft.baseClassDays ?? [];
+                        return { ...current, draft: { ...current.draft, baseClassDays: days.includes(day) ? days.filter((item) => item !== day) : [...days, day] } };
+                      })}
+                      className={`rounded-full border px-3 py-2 text-xs font-black ${studentEditor.draft.baseClassDays?.includes(day) ? "border-[#a57a10] bg-[#d9b344]" : "border-[#d9bb5c] bg-[#fffdf8]"}`}
+                    >
+                      {day.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <select
+                    value={studentEditor.draft.baseClassName ?? "Class 1"}
+                    onChange={(event) => setStudentEditor((current) => current ? { ...current, draft: { ...current.draft, baseClassName: event.target.value } } : current)}
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                  >
+                    {["Class 1", "Class 2", "Class 3", "Class 4", "Early birds"].map((label) => <option key={label} value={label}>{label}</option>)}
+                  </select>
+                  <select
+                    value={studentEditor.draft.baseClassTime ?? ""}
+                    onChange={(event) => setStudentEditor((current) => current ? { ...current, draft: { ...current.draft, baseClassTime: event.target.value } } : current)}
+                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                  >
+                    {[...new Set(STUDENT_SESSION_OPTIONS.map((option) => option.time))].map((time) => <option key={time} value={time}>{time}</option>)}
+                  </select>
+                </div>
+                {studentError ? <p className="mt-3 text-sm font-bold text-[#8b1e1e]">{studentError}</p> : null}
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Belt</label>
@@ -1232,7 +1321,7 @@ export default function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(scheduleView === "weekly" ? initialSessions : [...initialSessions, ...buildMonthlySessions()]).map((session) => {
+                      {sortSessionsByDateTime(scheduleView === "weekly" ? initialSessions : [...initialSessions, ...buildMonthlySessions()]).map((session) => {
                         const classInfo = karateClasses.find((klass) => klass.id === session.classId);
                         const availability = getSessionAvailability(session, bookings, guestBookings);
                         const parentConfirmedCount = bookings.filter(
@@ -1300,7 +1389,7 @@ export default function AdminPage() {
               <div className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <h4 className="text-lg font-black uppercase text-[#111111]">Recent bookings</h4>
+                    <h4 className="text-lg font-black uppercase text-[#111111]">Additional Class bookings</h4>
                     <p className="mt-1 text-xs text-[#4a4a4a]">{bookings.length} reservation{bookings.length === 1 ? "" : "s"}</p>
                   </div>
                   <button
@@ -1308,7 +1397,7 @@ export default function AdminPage() {
                     onClick={openCreateBooking}
                     className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#171717]"
                   >
-                    New booking
+                    New Additional Class
                   </button>
                 </div>
                 <div className="space-y-3">

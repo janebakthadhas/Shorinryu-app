@@ -10,6 +10,7 @@ import {
   initialBookings,
   initialSessions,
   karateClasses,
+  sortSessionsByDateTime,
   type BookingRecord,
   type SessionRecord,
 } from "@/lib/mock-data";
@@ -29,6 +30,9 @@ type ParentChildRecord = {
   belt?: string;
   className?: string;
   classTime?: string;
+  baseClassDays?: string[];
+  baseClassName?: string;
+  baseClassTime?: string;
 };
 
 type ParentRegistryEntry = {
@@ -219,6 +223,7 @@ export default function ParentDashboardPage() {
   const [childNameDraft, setChildNameDraft] = useState("");
   const [childAgeDraft, setChildAgeDraft] = useState("");
   const [children, setChildren] = useState<ParentChildRecord[]>([]);
+  const [baseClassSearch, setBaseClassSearch] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -374,6 +379,12 @@ export default function ParentDashboardPage() {
 
     return [...new Set([...namesFromChildren, ...namesFromBookings])];
   }, [children, bookings, currentParentName, currentParent]);
+
+  const visibleBaseChildren = useMemo(() => {
+    const query = baseClassSearch.trim().toLowerCase();
+    if (!query) return children;
+    return children.filter((child) => [child.name, currentParent?.name, currentParent?.email].some((value) => value?.toLowerCase().includes(query)));
+  }, [baseClassSearch, children, currentParent]);
 
   const openCreateBooking = (sessionId?: string) => {
     setBookingError("");
@@ -578,9 +589,9 @@ export default function ParentDashboardPage() {
   }, [viewMode]);
 
   const sessionsByClass = useMemo(() => {
-    return karateClasses.map((klass) => ({
-      classInfo: klass,
-      sessions: visibleSessions.filter((session) => session.classId === klass.id),
+    return sortSessionsByDateTime(visibleSessions).map((session) => ({
+      classInfo: karateClasses.find((klass) => klass.id === session.classId) ?? karateClasses[0],
+      sessions: [session],
     }));
   }, [visibleSessions]);
 
@@ -684,12 +695,12 @@ export default function ParentDashboardPage() {
 
       {bookingEditor ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/50 p-4">
-          <div className="w-full max-w-xl rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">
-              {bookingEditor.mode === "create" ? "New booking" : "Edit booking"}
+              {bookingEditor.mode === "create" ? "New Additional Class" : "Edit Additional Class"}
             </p>
             <h3 className="mt-3 text-2xl font-black uppercase text-[#111111]">
-              {bookingEditor.mode === "create" ? "Book a class" : "Update reservation"}
+              {bookingEditor.mode === "create" ? "Book an Additional Class" : "Update reservation"}
             </h3>
 
             <div className="mt-6 space-y-4">
@@ -941,16 +952,42 @@ export default function ParentDashboardPage() {
                   <h3 className="text-xl font-black uppercase text-[#111111]">My children</h3>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {children.length > 0 ? (
-                    children.map((child) => (
+                <div className="mb-5 rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class lookup</p>
+                  <p className="mt-2 text-sm text-[#3b3b3b]">Search your linked children by student name, parent name, or parent email. This schedule is set by the admin and is read-only.</p>
+                  <input
+                    value={baseClassSearch}
+                    onChange={(event) => setBaseClassSearch(event.target.value)}
+                    placeholder="Search student, parent, or email"
+                    className="mt-3 w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
+                  />
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {visibleBaseChildren.length > 0 ? (
+                      visibleBaseChildren.map((child) => (
                       <div key={`${child.name}-${child.age}`} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Student</p>
                         <p className="mt-2 text-lg font-black text-[#111111]">{child.name}</p>
                         <p className="mt-1 text-sm text-[#3b3b3b]">Age: {child.age || "Not set"}</p>
+                        <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-[#5a4309]">Base Class</p>
+                        <p className="mt-1 text-sm font-bold text-[#3b3b3b]">{child.baseClassDays?.join(", ") || "Not assigned"}{child.baseClassTime ? ` · ${child.baseClassTime}` : ""}</p>
+                        {child.baseClassName ? <p className="mt-1 text-sm font-bold text-[#3b3b3b]">{child.baseClassName}</p> : null}
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#6d510c]">Set by admin · Read only</p>
                       </div>
-                    ))
+                      ))
                   ) : (
+                      <p className="text-sm text-[#3b3b3b]">No linked child matches that search.</p>
+                  )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {children.length > 0 ? children.map((child) => (
+                    <div key={`${child.name}-${child.age}-summary`} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Student</p>
+                      <p className="mt-2 text-lg font-black text-[#111111]">{child.name}</p>
+                      <p className="mt-1 text-sm text-[#3b3b3b]">Age: {child.age || "Not set"}</p>
+                    </div>
+                  )) : (
                     <p className="text-sm text-[#3b3b3b]">No children added yet. Add your child or family member below to auto-fill future bookings.</p>
                   )}
                 </div>
@@ -981,7 +1018,7 @@ export default function ParentDashboardPage() {
               </div>
 
               <div className="mb-5 text-center">
-                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Parent booking</p>
+                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Additional Class booking</p>
                 <div className="mt-4 flex justify-center">
                   <div className="inline-flex rounded-full border-2 border-[#c7a531] bg-[#f5f0e5] p-1">
                     {[
@@ -1019,7 +1056,7 @@ export default function ParentDashboardPage() {
                   onClick={() => openCreateBooking()}
                   className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
                 >
-                  New booking
+                  Book Additional Class
                 </button>
               </div>
 
@@ -1147,7 +1184,7 @@ export default function ParentDashboardPage() {
               ) : (
                 <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {sessionsByClass.map(({ classInfo, sessions }) => (
-                    <div key={classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                    <div key={sessions[0]?.id ?? classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                       <div className="space-y-3">
                         {sessions.map((session) => (
                           <BookingCard

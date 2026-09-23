@@ -8,6 +8,7 @@ import {
   initialBookings,
   initialSessions,
   karateClasses,
+  sortSessionsByDateTime,
   type BookingRecord,
   type SessionRecord,
 } from "@/lib/mock-data";
@@ -403,9 +404,9 @@ export default function Home() {
   };
 
   const sessionsByClass = useMemo(() => {
-    return karateClasses.map((klass) => ({
-      classInfo: klass,
-      sessions: initialSessions.filter((session) => session.classId === klass.id),
+    return sortSessionsByDateTime(initialSessions).map((session) => ({
+      classInfo: karateClasses.find((klass) => klass.id === session.classId) ?? karateClasses[0],
+      sessions: [session],
     }));
   }, []);
 
@@ -701,7 +702,7 @@ export default function Home() {
 
               <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {sessionsByClass.map(({ classInfo, sessions }) => (
-                  <div key={classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                  <div key={sessions[0]?.id ?? classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                     <div className="space-y-3">
                       {sessions.map((session) => {
                         const availability = getSessionAvailability(session, bookings, guestBookings);
