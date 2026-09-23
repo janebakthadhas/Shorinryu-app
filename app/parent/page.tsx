@@ -1016,7 +1016,7 @@ export default function ParentDashboardPage() {
                 </div>
 
                 <div className="mb-5 rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class lookup</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class Assignment</p>
                   <p className="mt-2 text-sm text-[#3b3b3b]">Search your linked children by student name, parent name, or parent email. This schedule is set by the admin and is read-only.</p>
                   <input
                     value={baseClassSearch}
@@ -1035,6 +1035,14 @@ export default function ParentDashboardPage() {
                         <p className="mt-1 text-sm font-bold text-[#3b3b3b]">{child.baseClassDays?.join(", ") || "Not assigned"}{child.baseClassTime ? ` · ${child.baseClassTime}` : ""}</p>
                         {child.baseClassName ? <p className="mt-1 text-sm font-bold text-[#3b3b3b]">{child.baseClassName}</p> : null}
                         <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#6d510c]">Set by admin · Read only</p>
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" disabled className="cursor-not-allowed rounded-full border border-[#bdbdbd] bg-[#e1e1e1] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#777]">
+                            Edit
+                          </button>
+                          <button type="button" disabled className="cursor-not-allowed rounded-full border border-[#bdbdbd] bg-[#e1e1e1] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#777]">
+                            Delete
+                          </button>
+                        </div>
                       </div>
                       ))
                   ) : (

@@ -430,6 +430,56 @@ export default function AdminPage() {
     }));
   }, [bookings, allSessions]);
 
+  const baseClassRosterByName = useMemo(() => {
+    const classOrder = ["Class 1", "Class 2", "Class 3", "Class 4", "Early Birds"];
+    const groups = new Map<string, StudentRecord[]>();
+
+    studentRoster.forEach((student) => {
+      const className = student.baseClassName || student.className || "Unassigned";
+      groups.set(className, [...(groups.get(className) ?? []), student]);
+    });
+
+    return [...groups.entries()].sort(([left], [right]) => {
+      const leftIndex = classOrder.indexOf(left);
+      const rightIndex = classOrder.indexOf(right);
+      return (leftIndex < 0 ? classOrder.length : leftIndex) - (rightIndex < 0 ? classOrder.length : rightIndex) || left.localeCompare(right);
+    });
+  }, [studentRoster]);
+
+  const baseAssignmentBookingIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    bookings.forEach((booking) => {
+      const session = allSessions.find((item) => item.id === booking.sessionId);
+      if (!session) return;
+
+      const sessionClassName = getSessionDisplayName(
+        session,
+        karateClasses.find((klass) => klass.id === session.classId)?.name ?? "Class",
+      );
+      const sessionDay = new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long" });
+      const matchesAssignment = studentRoster.some((student) =>
+        student.name.trim().toLowerCase() === booking.childName.trim().toLowerCase() &&
+        (student.baseClassName || student.className) === sessionClassName &&
+        (student.baseClassDays ?? []).includes(sessionDay),
+      );
+
+      if (matchesAssignment) ids.add(booking.id);
+    });
+
+    return ids;
+  }, [allSessions, bookings, studentRoster]);
+
+  const additionalBookingsByClass = useMemo(
+    () => bookingsByClass
+      .map((group) => ({
+        ...group,
+        bookings: group.bookings.filter((booking) => !baseAssignmentBookingIds.has(booking.id)),
+      }))
+      .filter((group) => group.bookings.length > 0),
+    [baseAssignmentBookingIds, bookingsByClass],
+  );
+
   const openCreateBooking = () => {
     setBookingError("");
     setBookingEditor({
@@ -1517,7 +1567,7 @@ export default function AdminPage() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {bookingsByClass.length > 0 ? bookingsByClass.map((group) => (
+                  {additionalBookingsByClass.length > 0 ? additionalBookingsByClass.map((group) => (
                     <div key={group.className} className="rounded-xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
                       <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#d9bb5c] pb-2">
                         <p className="text-sm font-black uppercase tracking-[0.12em] text-[#5a4309]">{group.className}</p>
@@ -1536,6 +1586,9 @@ export default function AdminPage() {
                                   {booking.childName} • {booking.parentName}
                                 </p>
                                 <p className="mt-1 text-xs text-[#4a4a4a]">{matchingSession ? formatSessionLabel(matchingSession) : "Session unavailable"}</p>
+                                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#5a4309]">
+                                  Source: Persisted booking · Date: {matchingSession?.date ?? "Unavailable"}
+                                </p>
                               </div>
                               <div className="text-left sm:text-right">
                                 <p className="text-xs font-black uppercase tracking-[0.14em] text-[#5a4309]">{booking.status}</p>
@@ -1598,33 +1651,35 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {studentRoster.length > 0 ? studentRoster.map((student) => (
-                    <div key={`${student.name}-${student.parent}`} className="rounded-2xl border border-[#eadcb0] bg-[#f9f4ea] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="rounded-full border border-[#c7a531] bg-[#fffdf8] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171717]">
-                          {student.belt}
-                        </span>
+                {baseClassRosterByName.length > 0 ? (
+                  <div className="space-y-4">
+                    {baseClassRosterByName.map(([className, students]) => (
+                      <div key={className} className="rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#d9bb5c] pb-2">
+                          <p className="text-sm font-black uppercase tracking-[0.12em] text-[#5a4309]">{className}</p>
+                          <span className="text-xs font-bold text-[#4a4a4a]">{students.length} student{students.length === 1 ? "" : "s"}</span>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {students.map((student) => (
+                            <div key={`${className}-${student.name}-${student.parent}`} className="rounded-2xl border border-[#eadcb0] bg-[#f9f4ea] p-4">
+                              <span className="rounded-full border border-[#c7a531] bg-[#fffdf8] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171717]">{student.belt}</span>
+                              <p className="mt-3 text-lg font-black text-[#111111]">{student.name}</p>
+                              <p className="mt-1 text-sm text-[#3b3b3b]">Parent: {student.parent}</p>
+                              <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-[#5a4309]">{student.classTime}</p>
+                              <button
+                                type="button"
+                                onClick={() => setDetailModal({ title: student.name === "N/A" ? student.parent : student.name, subtitle: student.belt, body: "This record includes the current belt level, parent contact summary, and class assignment. Use this section to review family details, send notes, or update the student profile." })}
+                                className="mt-3 rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
+                              >
+                                View details
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <p className="mt-3 text-lg font-black text-[#111111]">{student.name}</p>
-                      <p className="mt-1 text-sm text-[#3b3b3b]">Parent: {student.parent}</p>
-                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-[#5a4309]">{student.classTime}</p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDetailModal({
-                            title: student.name === "N/A" ? student.parent : student.name,
-                            subtitle: student.belt,
-                            body: `This record includes the current belt level, parent contact summary, and class assignment. Use this section to review family details, send notes, or update the student profile.`,
-                          })
-                        }
-                        className="mt-3 rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
-                      >
-                        View details
-                      </button>
-                    </div>
-                  )) : <p className="text-sm text-[#3b3b3b]">No student records yet. Add a student to begin building the roster.</p>}
-                </div>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-[#3b3b3b]">No student records yet. Add a student to begin building the roster.</p>}
               </div>
             </section>
 
