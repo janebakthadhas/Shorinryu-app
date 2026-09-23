@@ -20,8 +20,6 @@ import {
   supabase,
   updateSupabaseBooking,
 } from "@/lib/supabase";
-import { getSupabaseStudentSchedule, getSupabaseStudents, type SupabaseStudent } from "@/lib/supabase";
-import { formatWeekdays, type BaseClassAssignment, type ScheduleOverride } from "@/lib/class-schedules";
 
 const PARENT_REGISTRY_KEY = "shorinryu-parent-registry";
 
@@ -221,8 +219,6 @@ export default function ParentDashboardPage() {
   const [childNameDraft, setChildNameDraft] = useState("");
   const [childAgeDraft, setChildAgeDraft] = useState("");
   const [children, setChildren] = useState<ParentChildRecord[]>([]);
-  const [ownedStudents, setOwnedStudents] = useState<SupabaseStudent[]>([]);
-  const [studentSchedules, setStudentSchedules] = useState<Record<string, { base: BaseClassAssignment | null; overrides: ScheduleOverride[] }>>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -273,15 +269,6 @@ export default function ParentDashboardPage() {
 
     void hydrateParentSession();
   }, [router]);
-
-  useEffect(() => {
-    if (!currentParent || !supabase) return;
-    void getSupabaseStudents().then(async (students) => {
-      setOwnedStudents(students);
-      const schedules = await Promise.all(students.map(async (student) => [student.id, await getSupabaseStudentSchedule(student.id)] as const));
-      setStudentSchedules(Object.fromEntries(schedules.map(([id, schedule]) => [id, { base: schedule.base, overrides: schedule.overrides }])));
-    });
-  }, [currentParent]);
 
   useEffect(() => {
     const syncBookings = async () => {
@@ -699,10 +686,10 @@ export default function ParentDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111111]/50 p-4">
           <div className="w-full max-w-xl rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
             <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">
-              {bookingEditor.mode === "create" ? "Additional Class booking" : "Edit booking"}
+              {bookingEditor.mode === "create" ? "New booking" : "Edit booking"}
             </p>
             <h3 className="mt-3 text-2xl font-black uppercase text-[#111111]">
-              {bookingEditor.mode === "create" ? "Book an Additional Class" : "Update reservation"}
+              {bookingEditor.mode === "create" ? "Book a class" : "Update reservation"}
             </h3>
 
             <div className="mt-6 space-y-4">
@@ -993,28 +980,8 @@ export default function ParentDashboardPage() {
                 </div>
               </div>
 
-              {supabase && ownedStudents.length > 0 ? (
-                <div className="mb-5 rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5a4309]">Assigned schedule</p>
-                  <h3 className="mt-2 text-2xl font-black uppercase text-[#111111]">Base Classes</h3>
-                  <p className="mt-2 text-sm text-[#3b3b3b]">Your child&apos;s recurring class is managed by the school. Use Additional Class booking below for temporary extra training.</p>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {ownedStudents.map((student) => {
-                      const schedule = studentSchedules[student.id];
-                      return (
-                        <div key={student.id} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-4">
-                          <p className="text-lg font-black text-[#111111]">{student.name}</p>
-                          {schedule?.base ? <p className="mt-2 text-sm font-bold text-[#5a4309]">{formatWeekdays(schedule.base.weekdays)} · {schedule.base.startTime}–{schedule.base.endTime}</p> : <p className="mt-2 text-sm text-[#4a4a4a]">No Base Class assigned yet.</p>}
-                          {schedule?.overrides.length ? <p className="mt-2 text-xs font-bold text-[#7d1f1f]">Temporary changes: {schedule.overrides.map((override) => `${override.overrideDate} (${override.action})`).join(", ")}</p> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
               <div className="mb-5 text-center">
-                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Additional Class booking</p>
+                <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Parent booking</p>
                 <div className="mt-4 flex justify-center">
                   <div className="inline-flex rounded-full border-2 border-[#c7a531] bg-[#f5f0e5] p-1">
                     {[
@@ -1052,7 +1019,7 @@ export default function ParentDashboardPage() {
                   onClick={() => openCreateBooking()}
                   className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
                 >
-                  Book Additional Class
+                  New booking
                 </button>
               </div>
 

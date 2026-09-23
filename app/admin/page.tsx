@@ -13,14 +13,6 @@ import {
   type BookingRecord,
 } from "@/lib/mock-data";
 import { getSupabaseBookings, getSupabaseUserRole, supabase } from "@/lib/supabase";
-import {
-  getSupabaseStudentSchedule,
-  getSupabaseStudents,
-  saveSupabaseBaseClassAssignment,
-  saveSupabaseScheduleOverride,
-  type SupabaseStudent,
-} from "@/lib/supabase";
-import { formatWeekdays, type BaseClassAssignment } from "@/lib/class-schedules";
 
 function LogoMark() {
   return (
@@ -127,12 +119,6 @@ export default function AdminPage() {
     mode: "create";
     draft: StudentRecord;
   } | null>(null);
-  const [scheduleStudents, setScheduleStudents] = useState<SupabaseStudent[]>([]);
-  const [selectedScheduleStudentId, setSelectedScheduleStudentId] = useState("");
-  const [baseSchedule, setBaseSchedule] = useState<BaseClassAssignment | null>(null);
-  const [scheduleMessage, setScheduleMessage] = useState("");
-  const [overrideDate, setOverrideDate] = useState("");
-  const [overrideAction, setOverrideAction] = useState<"replace" | "cancel">("cancel");
   const router = useRouter();
 
   const allSessions = useMemo(() => [...initialSessions, ...buildMonthlySessions()], []);
@@ -233,47 +219,6 @@ export default function AdminPage() {
 
     void hydrateAdminAccess();
   }, [router]);
-
-  useEffect(() => {
-    if (!isAdmin || !supabase) return;
-    void getSupabaseStudents().then((students) => {
-      setScheduleStudents(students);
-      setSelectedScheduleStudentId((current) => current || students[0]?.id || "");
-    });
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!selectedScheduleStudentId) return;
-    void getSupabaseStudentSchedule(selectedScheduleStudentId).then(({ base }) => setBaseSchedule(base));
-  }, [selectedScheduleStudentId]);
-
-  const saveBaseSchedule = async () => {
-    if (!selectedScheduleStudentId) return;
-    const assignment: BaseClassAssignment = {
-      studentId: selectedScheduleStudentId,
-      classId: baseSchedule?.classId ?? karateClasses[0].id,
-      weekdays: baseSchedule?.weekdays ?? [4],
-      startTime: baseSchedule?.startTime ?? "17:30",
-      endTime: baseSchedule?.endTime ?? "18:30",
-    };
-    const result = await saveSupabaseBaseClassAssignment(assignment);
-    setBaseSchedule(assignment);
-    setScheduleMessage(result.ok ? "Base Class saved." : result.message ?? "Unable to save Base Class.");
-  };
-
-  const saveOverride = async () => {
-    if (!selectedScheduleStudentId || !overrideDate) return;
-    const result = await saveSupabaseScheduleOverride({
-      studentId: selectedScheduleStudentId,
-      overrideDate,
-      action: overrideAction,
-      classId: overrideAction === "replace" ? baseSchedule?.classId ?? karateClasses[0].id : undefined,
-      startTime: overrideAction === "replace" ? baseSchedule?.startTime ?? "17:30" : undefined,
-      endTime: overrideAction === "replace" ? baseSchedule?.endTime ?? "18:30" : undefined,
-      reason: "Admin schedule override",
-    });
-    setScheduleMessage(result.ok ? "Temporary override saved." : result.message ?? "Unable to save override.");
-  };
 
   const activeSessions = useMemo(
     () => (scheduleView === "weekly" ? initialSessions : allSessions),
@@ -1447,35 +1392,6 @@ export default function AdminPage() {
                     )}
                   </div>
                 </div>
-
-                {supabase ? (
-                  <div className="mb-5 rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Schedule assignments</p>
-                    <p className="mt-2 text-sm text-[#3b3b3b]">Admins control recurring Base Classes and temporary date overrides. Parents can view these assignments but cannot change them.</p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <select value={selectedScheduleStudentId} onChange={(event) => setSelectedScheduleStudentId(event.target.value)} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111]">
-                        <option value="">Select a student</option>
-                        {scheduleStudents.map((student) => <option key={student.id} value={student.id}>{student.name} · {student.parent_name}</option>)}
-                      </select>
-                      <select value={baseSchedule?.classId ?? karateClasses[0].id} onChange={(event) => setBaseSchedule((current) => ({ studentId: selectedScheduleStudentId, classId: event.target.value, weekdays: current?.weekdays ?? [4], startTime: current?.startTime ?? "17:30", endTime: current?.endTime ?? "18:30" }))} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111]">
-                        {karateClasses.map((klass) => <option key={klass.id} value={klass.id}>{klass.name}</option>)}
-                      </select>
-                      <input type="time" value={baseSchedule?.startTime ?? "17:30"} onChange={(event) => setBaseSchedule((current) => ({ studentId: selectedScheduleStudentId, classId: current?.classId ?? karateClasses[0].id, weekdays: current?.weekdays ?? [4], startTime: event.target.value, endTime: current?.endTime ?? "18:30" }))} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111]" />
-                      <input type="time" value={baseSchedule?.endTime ?? "18:30"} onChange={(event) => setBaseSchedule((current) => ({ studentId: selectedScheduleStudentId, classId: current?.classId ?? karateClasses[0].id, weekdays: current?.weekdays ?? [4], startTime: current?.startTime ?? "17:30", endTime: event.target.value }))} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111]" />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {[0, 1, 2, 3, 4, 5, 6].map((day) => <button key={day} type="button" onClick={() => setBaseSchedule((current) => { const weekdays = current?.weekdays ?? [4]; return { studentId: selectedScheduleStudentId, classId: current?.classId ?? karateClasses[0].id, weekdays: weekdays.includes(day) ? weekdays.filter((item) => item !== day) : [...weekdays, day], startTime: current?.startTime ?? "17:30", endTime: current?.endTime ?? "18:30" }; })} className={`rounded-full border px-3 py-2 text-xs font-black ${baseSchedule?.weekdays.includes(day) ? "border-[#a57a10] bg-[#d9b344]" : "border-[#d9bb5c] bg-[#fffdf8]"}`}>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]}</button>)}
-                    </div>
-                    <p className="mt-2 text-xs text-[#4a4a4a]">{baseSchedule ? formatWeekdays(baseSchedule.weekdays) : "Thursday"}</p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button type="button" onClick={saveBaseSchedule} disabled={!selectedScheduleStudentId} className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-xs font-black uppercase tracking-[0.08em] disabled:opacity-50">Save Base Class</button>
-                      <input type="date" value={overrideDate} onChange={(event) => setOverrideDate(event.target.value)} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-3 py-2 text-sm" />
-                      <select value={overrideAction} onChange={(event) => setOverrideAction(event.target.value as "replace" | "cancel")} className="rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-3 py-2 text-sm"><option value="cancel">Cancel date</option><option value="replace">Replace date</option></select>
-                      <button type="button" onClick={saveOverride} disabled={!selectedScheduleStudentId || !overrideDate} className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-4 py-2 text-xs font-black uppercase tracking-[0.08em] disabled:opacity-50">Save override</button>
-                    </div>
-                    {scheduleMessage ? <p className="mt-3 text-sm font-bold text-[#1e5b2d]">{scheduleMessage}</p> : null}
-                  </div>
-                ) : null}
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {studentRoster.length > 0 ? studentRoster.map((student) => (

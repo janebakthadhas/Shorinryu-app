@@ -44,81 +44,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
-create table if not exists public.students (
-  id uuid primary key default gen_random_uuid(),
-  parent_id uuid not null references auth.users(id) on delete cascade,
-  parent_email text not null,
-  parent_name text not null,
-  name text not null,
-  age text,
-  belt text not null default 'White',
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.base_class_assignments (
-  student_id uuid primary key references public.students(id) on delete cascade,
-  class_id uuid not null references public.classes(id) on delete restrict,
-  weekdays smallint[] not null check (cardinality(weekdays) > 0),
-  start_time time not null,
-  end_time time not null,
-  updated_by uuid references auth.users(id),
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.additional_class_assignments (
-  id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.students(id) on delete cascade,
-  class_id uuid not null references public.classes(id) on delete restrict,
-  start_date date not null,
-  end_date date not null,
-  weekdays smallint[] not null check (cardinality(weekdays) > 0),
-  start_time time not null,
-  end_time time not null,
-  status text not null default 'confirmed' check (status in ('confirmed', 'cancelled')),
-  created_by uuid references auth.users(id),
-  created_at timestamptz not null default now(),
-  check (end_date >= start_date)
-);
-
-create table if not exists public.schedule_overrides (
-  id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.students(id) on delete cascade,
-  override_date date not null,
-  class_id uuid references public.classes(id) on delete restrict,
-  start_time time,
-  end_time time,
-  action text not null default 'replace' check (action in ('replace', 'cancel')),
-  reason text,
-  created_by uuid not null references auth.users(id),
-  created_at timestamptz not null default now(),
-  unique (student_id, override_date)
-);
-
-create or replace view public.student_schedule_assignments as
-select
-  b.student_id,
-  'base'::text as assignment_type,
-  b.class_id,
-  null::date as start_date,
-  null::date as end_date,
-  b.weekdays,
-  b.start_time,
-  b.end_time,
-  true as active
-from public.base_class_assignments b
-union all
-select
-  a.student_id,
-  'additional'::text as assignment_type,
-  a.class_id,
-  a.start_date,
-  a.end_date,
-  a.weekdays,
-  a.start_time,
-  a.end_time,
-  a.status = 'confirmed' as active
-from public.additional_class_assignments a;
-
 create or replace view public.session_availability as
 select
   s.id,
@@ -218,20 +143,6 @@ alter table public.classes enable row level security;
 alter table public.sessions enable row level security;
 alter table public.bookings enable row level security;
 alter table public.profiles enable row level security;
-alter table public.students enable row level security;
-alter table public.base_class_assignments enable row level security;
-alter table public.additional_class_assignments enable row level security;
-alter table public.schedule_overrides enable row level security;
-
-create or replace function public.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role = 'admin');
-$$;
 
 drop policy if exists "Public can read classes" on public.classes;
 drop policy if exists "Public can read sessions" on public.sessions;
@@ -309,34 +220,6 @@ on public.bookings for update using (
     where p.id = auth.uid() and p.role = 'admin'
   )
 );
-
-drop policy if exists "Parents can view own students" on public.students;
-drop policy if exists "Admins can manage students" on public.students;
-create policy "Parents can view own students" on public.students for select using (parent_id = auth.uid());
-create policy "Admins can manage students" on public.students for all using (public.is_admin()) with check (public.is_admin());
-
-drop policy if exists "Parents can view own base classes" on public.base_class_assignments;
-drop policy if exists "Admins can manage base classes" on public.base_class_assignments;
-create policy "Parents can view own base classes" on public.base_class_assignments for select using (
-  exists (select 1 from public.students s where s.id = student_id and s.parent_id = auth.uid())
-);
-create policy "Admins can manage base classes" on public.base_class_assignments for all using (public.is_admin()) with check (public.is_admin());
-
-drop policy if exists "Parents can manage own additional classes" on public.additional_class_assignments;
-drop policy if exists "Admins can manage additional classes" on public.additional_class_assignments;
-create policy "Parents can manage own additional classes" on public.additional_class_assignments for all using (
-  exists (select 1 from public.students s where s.id = student_id and s.parent_id = auth.uid())
-) with check (
-  exists (select 1 from public.students s where s.id = student_id and s.parent_id = auth.uid())
-);
-create policy "Admins can manage additional classes" on public.additional_class_assignments for all using (public.is_admin()) with check (public.is_admin());
-
-drop policy if exists "Admins can manage schedule overrides" on public.schedule_overrides;
-drop policy if exists "Parents can view own schedule overrides" on public.schedule_overrides;
-create policy "Parents can view own schedule overrides" on public.schedule_overrides for select using (
-  exists (select 1 from public.students s where s.id = student_id and s.parent_id = auth.uid())
-);
-create policy "Admins can manage schedule overrides" on public.schedule_overrides for all using (public.is_admin()) with check (public.is_admin());
 
 -- Seed the default classes used by the app.
 insert into public.classes (id, name, description, age_group, instructor)
