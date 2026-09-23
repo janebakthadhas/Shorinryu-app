@@ -11,7 +11,19 @@ export default function ResetPasswordPage() {
   const [isReady, setIsReady] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState(supabase ? "" : "Password recovery is not available.");
+  const [error, setError] = useState(() => {
+    if (!supabase) {
+      return "Password recovery is not available.";
+    }
+
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const recoveryError = hashParams.get("error_description");
+    return recoveryError ? recoveryError.replace(/\+/g, " ") : "";
+  });
 
   useEffect(() => {
     if (!supabase) {
@@ -23,12 +35,6 @@ export default function ResetPasswordPage() {
         setIsReady(true);
       }
     });
-
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const recoveryError = hashParams.get("error_description");
-    if (recoveryError) {
-      setError(recoveryError.replace(/\+/g, " "));
-    }
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
