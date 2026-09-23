@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { BookingRecord } from "@/lib/mock-data";
+import type { AdditionalClassAssignment, BaseClassAssignment, ScheduleOverride } from "@/lib/class-schedules";
 
 const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 const normalizedSupabaseUrl = rawSupabaseUrl
@@ -196,4 +197,101 @@ export async function updateSupabaseBooking({
   }
 
   return { ok: true };
+}
+
+export type SupabaseStudent = {
+  id: string;
+  parent_id: string;
+  parent_email: string;
+  parent_name: string;
+  name: string;
+  age?: string | null;
+  belt: string;
+};
+
+export async function getSupabaseStudents(): Promise<SupabaseStudent[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from("students").select("*").order("name");
+  return error || !data ? [] : (data as SupabaseStudent[]);
+}
+
+export async function getSupabaseStudentSchedule(studentId: string) {
+  if (!supabase || !UUID_REGEX.test(studentId)) return { base: null, additional: [], overrides: [] };
+  const [base, additional, overrides] = await Promise.all([
+    supabase.from("base_class_assignments").select("*").eq("student_id", studentId).maybeSingle(),
+    supabase.from("additional_class_assignments").select("*").eq("student_id", studentId).order("start_date"),
+    supabase.from("schedule_overrides").select("*").eq("student_id", studentId).order("override_date"),
+  ]);
+  return {
+    base: base.data
+      ? {
+          studentId: base.data.student_id,
+          classId: base.data.class_id,
+          weekdays: base.data.weekdays,
+          startTime: base.data.start_time,
+          endTime: base.data.end_time,
+        } satisfies BaseClassAssignment
+      : null,
+    additional: ((additional.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      studentId: String(row.student_id),
+      classId: String(row.class_id),
+      startDate: String(row.start_date),
+      endDate: String(row.end_date),
+      weekdays: row.weekdays as number[],
+      startTime: String(row.start_time),
+      endTime: String(row.end_time),
+      status: row.status as "confirmed" | "cancelled",
+    } satisfies AdditionalClassAssignment)),
+    overrides: ((overrides.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      studentId: String(row.student_id),
+      overrideDate: String(row.override_date),
+      classId: row.class_id ? String(row.class_id) : undefined,
+      startTime: row.start_time ? String(row.start_time) : undefined,
+      endTime: row.end_time ? String(row.end_time) : undefined,
+      action: row.action as "replace" | "cancel",
+      reason: row.reason ? String(row.reason) : undefined,
+    } satisfies ScheduleOverride)),
+  };
+}
+
+export async function saveSupabaseBaseClassAssignment(assignment: BaseClassAssignment) {
+  if (!supabase) return { ok: true };
+  const { error } = await supabase.from("base_class_assignments").upsert({
+    student_id: assignment.studentId,
+    class_id: assignment.classId,
+    weekdays: assignment.weekdays,
+    start_time: assignment.startTime,
+    end_time: assignment.endTime,
+  });
+  return { ok: !error, message: error?.message };
+}
+
+export async function createSupabaseAdditionalClass(assignment: Omit<AdditionalClassAssignment, "id" | "status">) {
+  if (!supabase) return { ok: true };
+  const { error } = await supabase.from("additional_class_assignments").insert({
+    student_id: assignment.studentId,
+    class_id: assignment.classId,
+    start_date: assignment.startDate,
+    end_date: assignment.endDate,
+    weekdays: assignment.weekdays,
+    start_time: assignment.startTime,
+    end_time: assignment.endTime,
+  });
+  return { ok: !error, message: error?.message };
+}
+
+export async function saveSupabaseScheduleOverride(override: Omit<ScheduleOverride, "id">) {
+  if (!supabase) return { ok: true };
+  const { error } = await supabase.from("schedule_overrides").upsert({
+    student_id: override.studentId,
+    override_date: override.overrideDate,
+    class_id: override.classId ?? null,
+    start_time: override.startTime ?? null,
+    end_time: override.endTime ?? null,
+    action: override.action,
+    reason: override.reason ?? null,
+  }, { onConflict: "student_id,override_date" });
+  return { ok: !error, message: error?.message };
 }
