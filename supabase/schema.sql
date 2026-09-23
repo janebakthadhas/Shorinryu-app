@@ -254,67 +254,108 @@ on public.students for select using (
   lower(parent_email) = lower(auth.jwt() ->> 'email')
 );
 
--- Seed the default classes used by the app.
+-- Seed the five named class slots used by the app.
 insert into public.classes (id, name, description, age_group, instructor)
 values
-  ('a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b', 'Little Dragons', 'Karate fundamentals and discipline for children.', 'Ages 4-6', 'Sensei Daniels'),
-  ('1b20210d-4ce6-4db1-99da-58b5000aa11f', 'Youth Beginner', 'Skill-building karate practice for kids and teens.', 'Ages 7-12', 'Sensei Patel'),
-  ('0cf399a3-0748-4f6b-8d50-a6d99d6dbc0d', 'Adult Beginner', 'Fitness, focus, and self-defense for adults.', 'Adults', 'Sensei Ramirez')
-on conflict (id) do nothing;
+  ('a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b', 'Class 1', 'Thursday evening karate class.', 'All ages', 'Sensei Daniels'),
+  ('1b20210d-4ce6-4db1-99da-58b5000aa11f', 'Class 2', 'Thursday evening karate class.', 'All ages', 'Sensei Patel'),
+  ('0cf399a3-0748-4f6b-8d50-a6d99d6dbc0d', 'Early Birds', 'Saturday morning karate class.', 'All ages', 'Sensei Ramirez'),
+  ('5f83f9f7-6df0-4e5b-9a5d-5a1df1f2c301', 'Class 3', 'Friday evening karate class.', 'All ages', 'Sensei Daniels'),
+  ('6c6f2b1d-0b59-46d7-9a75-0cf2e11ac402', 'Class 4', 'Friday evening karate class.', 'All ages', 'Sensei Patel')
+on conflict (id) do update set
+  name = excluded.name,
+  description = excluded.description,
+  age_group = excluded.age_group,
+  instructor = excluded.instructor;
+
+-- Migrate existing sessions from the former age-based class types to the
+-- numbered class slots without changing their dates, times, or bookings.
+update public.sessions
+set class_id = case
+  when extract(dow from session_date) = 4 and start_time = '17:30'::time then 'a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b'::uuid
+  when extract(dow from session_date) = 4 and start_time = '18:45'::time then '1b20210d-4ce6-4db1-99da-58b5000aa11f'::uuid
+  when extract(dow from session_date) = 5 and start_time = '17:30'::time then '5f83f9f7-6df0-4e5b-9a5d-5a1df1f2c301'::uuid
+  when extract(dow from session_date) = 5 and start_time = '18:45'::time then '6c6f2b1d-0b59-46d7-9a75-0cf2e11ac402'::uuid
+  when extract(dow from session_date) = 6 and start_time = '08:30'::time then '0cf399a3-0748-4f6b-8d50-a6d99d6dbc0d'::uuid
+  else class_id
+end
+where (extract(dow from session_date), start_time) in (
+  (4, '17:30'::time),
+  (4, '18:45'::time),
+  (5, '17:30'::time),
+  (5, '18:45'::time),
+  (6, '08:30'::time)
+);
 
 -- Seed sample sessions for the next 2-3 weeks.
 with generated as (
   select
-    c.id as class_id,
-    c.name,
     (current_date + ((4 - extract(dow from current_date)::int + 7) % 7))::date as thursday_date,
     (current_date + ((5 - extract(dow from current_date)::int + 7) % 7))::date as friday_date,
     (current_date + ((6 - extract(dow from current_date)::int + 7) % 7))::date as saturday_date
-  from public.classes c
 )
 insert into public.sessions (class_id, session_date, start_time, end_time, capacity)
 select
-  class_id,
+  'a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b'::uuid,
   generated.thursday_date,
   '17:30'::time,
   '18:30'::time,
   9
 from generated
-where name = 'Little Dragons'
+where not exists (
+  select 1 from public.sessions
+  where class_id = 'a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b'::uuid
+    and session_date = generated.thursday_date and start_time = '17:30'::time
+)
 union all
 select
-  class_id,
+  '5f83f9f7-6df0-4e5b-9a5d-5a1df1f2c301'::uuid,
   generated.friday_date,
   '17:30'::time,
   '18:30'::time,
   9
 from generated
-where name = 'Little Dragons'
+where not exists (
+  select 1 from public.sessions
+  where class_id = '5f83f9f7-6df0-4e5b-9a5d-5a1df1f2c301'::uuid
+    and session_date = generated.friday_date and start_time = '17:30'::time
+)
 union all
 select
-  class_id,
+  '1b20210d-4ce6-4db1-99da-58b5000aa11f'::uuid,
   generated.thursday_date,
   '18:45'::time,
   '19:45'::time,
   9
 from generated
-where name = 'Youth Beginner'
+where not exists (
+  select 1 from public.sessions
+  where class_id = '1b20210d-4ce6-4db1-99da-58b5000aa11f'::uuid
+    and session_date = generated.thursday_date and start_time = '18:45'::time
+)
 union all
 select
-  class_id,
+  '6c6f2b1d-0b59-46d7-9a75-0cf2e11ac402'::uuid,
   generated.friday_date,
   '18:45'::time,
   '19:45'::time,
   9
 from generated
-where name = 'Youth Beginner'
+where not exists (
+  select 1 from public.sessions
+  where class_id = '6c6f2b1d-0b59-46d7-9a75-0cf2e11ac402'::uuid
+    and session_date = generated.friday_date and start_time = '18:45'::time
+)
 union all
 select
-  class_id,
+  '0cf399a3-0748-4f6b-8d50-a6d99d6dbc0d'::uuid,
   generated.saturday_date,
   '08:30'::time,
   '09:30'::time,
   9
 from generated
-where name = 'Adult Beginner'
-on conflict do nothing;
+where not exists (
+  select 1 from public.sessions
+  where class_id = '0cf399a3-0748-4f6b-8d50-a6d99d6dbc0d'::uuid
+    and session_date = generated.saturday_date and start_time = '08:30'::time
+);

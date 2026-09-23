@@ -30,24 +30,38 @@ export type BookingRecord = {
 export const karateClasses: ClassRecord[] = [
   {
     id: "little-dragons",
-    name: "Little Dragons",
-    description: "Karate fundamentals and discipline for children.",
-    ageGroup: "Ages 4-6",
+    name: "Class 1",
+    description: "Thursday evening karate class.",
+    ageGroup: "All ages",
     instructor: "Sensei Daniels",
   },
   {
     id: "youth-beginner",
-    name: "Youth Beginner",
-    description: "Skill-building karate practice for kids and teens.",
-    ageGroup: "Ages 7-12",
+    name: "Class 2",
+    description: "Thursday evening karate class.",
+    ageGroup: "All ages",
     instructor: "Sensei Patel",
   },
   {
     id: "adult-beginner",
-    name: "Adult Beginner",
-    description: "Fitness, focus, and self-defense for adults.",
-    ageGroup: "Adults",
+    name: "Early Birds",
+    description: "Saturday morning karate class.",
+    ageGroup: "All ages",
     instructor: "Sensei Ramirez",
+  },
+  {
+    id: "class-3",
+    name: "Class 3",
+    description: "Friday evening karate class.",
+    ageGroup: "All ages",
+    instructor: "Sensei Daniels",
+  },
+  {
+    id: "class-4",
+    name: "Class 4",
+    description: "Friday evening karate class.",
+    ageGroup: "All ages",
+    instructor: "Sensei Patel",
   },
 ];
 
@@ -71,9 +85,9 @@ export function buildWeeklySessions(referenceDate: Date = new Date()): SessionRe
 
   const schedule: Array<{ classId: string; date: Date; startTime: string; endTime: string; capacity: number }> = [
     { classId: "little-dragons", date: thursday, startTime: "17:30", endTime: "18:30", capacity: 9 },
-    { classId: "little-dragons", date: friday, startTime: "17:30", endTime: "18:30", capacity: 9 },
+    { classId: "class-3", date: friday, startTime: "17:30", endTime: "18:30", capacity: 9 },
     { classId: "youth-beginner", date: thursday, startTime: "18:45", endTime: "19:45", capacity: 9 },
-    { classId: "youth-beginner", date: friday, startTime: "18:45", endTime: "19:45", capacity: 9 },
+    { classId: "class-4", date: friday, startTime: "18:45", endTime: "19:45", capacity: 9 },
     { classId: "adult-beginner", date: saturday, startTime: "08:30", endTime: "09:30", capacity: 9 },
   ];
 
@@ -125,14 +139,6 @@ export function getSessionAvailability(
 }
 
 export function getSessionDisplayName(session: SessionRecord, fallbackName: string) {
-  const weekday = new Date(`${session.date}T00:00:00`).getDay();
-
-  if (weekday === 4 && session.startTime === "17:30") return "Class 1";
-  if (weekday === 4 && session.startTime === "18:45") return "Class 2";
-  if (weekday === 5 && session.startTime === "17:30") return "Class 3";
-  if (weekday === 5 && session.startTime === "18:45") return "Class 4";
-  if (weekday === 6) return "Early Birds";
-
   return fallbackName;
 }
 
