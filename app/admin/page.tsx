@@ -404,8 +404,8 @@ export default function AdminPage() {
     bookings.forEach((booking) => {
       const session = allSessions.find((item) => item.id === booking.sessionId);
       const classInfo = session ? karateClasses.find((klass) => klass.id === session.classId) : null;
-      const className = session && classInfo
-        ? getSessionDisplayName(session, classInfo.name)
+      const className = session
+        ? getSessionDisplayName(session, classInfo?.name ?? "Class")
         : "Class unavailable";
       const group = groups.get(className) ?? { className, bookings: [] };
       group.bookings.push(booking);
@@ -804,7 +804,7 @@ export default function AdminPage() {
                             booking.status === "confirmed",
                         )}
                       >
-                          {classInfo ? getSessionDisplayName(session, classInfo.name) : "Class"} · {formatSessionLabel(session)}
+                          {getSessionDisplayName(session, classInfo?.name ?? "Class")} · {formatSessionLabel(session)}
                       </option>
                     );
                   })}
@@ -1509,7 +1509,7 @@ export default function AdminPage() {
                         return (
                           <tr key={session.id} className="border-t border-[#eadcb0]">
                             <td className="px-4 py-3 font-bold text-[#5a4309]">
-                              {classInfo ? getSessionDisplayName(session, classInfo.name) : "Class unavailable"}
+                              {getSessionDisplayName(session, classInfo?.name ?? "Class")}
                             </td>
                             <td className="px-4 py-3 text-[#2f2f2f]">
                               {new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, {
@@ -1665,6 +1665,7 @@ export default function AdminPage() {
                               <span className="rounded-full border border-[#c7a531] bg-[#fffdf8] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171717]">{student.belt}</span>
                               <p className="mt-3 text-lg font-black text-[#111111]">{student.name}</p>
                               <p className="mt-1 text-sm text-[#3b3b3b]">Parent: {student.parent}</p>
+                              <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-[#5a4309]">Base Class: {className}</p>
                               <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-[#5a4309]">{student.classTime}</p>
                               <button
                                 type="button"
