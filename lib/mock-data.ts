@@ -27,6 +27,8 @@ export type BookingRecord = {
   status: BookingStatus;
 };
 
+export const SESSION_CAPACITY = 9;
+
 export const karateClasses: ClassRecord[] = [
   {
     id: "little-dragons",
@@ -70,11 +72,11 @@ export function buildWeeklySessions(referenceDate: Date = new Date()): SessionRe
   const saturday = getNextDateForWeekday(referenceDate, 6);
 
   const schedule: Array<{ classId: string; date: Date; startTime: string; endTime: string; capacity: number }> = [
-    { classId: "little-dragons", date: thursday, startTime: "17:30", endTime: "18:30", capacity: 9 },
-    { classId: "little-dragons", date: friday, startTime: "17:30", endTime: "18:30", capacity: 9 },
-    { classId: "youth-beginner", date: thursday, startTime: "18:45", endTime: "19:45", capacity: 9 },
-    { classId: "youth-beginner", date: friday, startTime: "18:45", endTime: "19:45", capacity: 9 },
-    { classId: "adult-beginner", date: saturday, startTime: "08:30", endTime: "09:30", capacity: 9 },
+    { classId: "little-dragons", date: thursday, startTime: "17:30", endTime: "18:30", capacity: SESSION_CAPACITY },
+    { classId: "little-dragons", date: friday, startTime: "17:30", endTime: "18:30", capacity: SESSION_CAPACITY },
+    { classId: "youth-beginner", date: thursday, startTime: "18:45", endTime: "19:45", capacity: SESSION_CAPACITY },
+    { classId: "youth-beginner", date: friday, startTime: "18:45", endTime: "19:45", capacity: SESSION_CAPACITY },
+    { classId: "adult-beginner", date: saturday, startTime: "08:30", endTime: "09:30", capacity: SESSION_CAPACITY },
   ];
 
   return schedule.map((slot, index) => ({

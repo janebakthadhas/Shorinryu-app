@@ -50,7 +50,7 @@ function BookingCard({
     ? "bg-[#f6d9d9] text-[#7d1f1f] border-[#bf4d4d]"
     : "bg-[#e4f5e3] text-[#1e5b2d] border-[#4aa55d]";
 
-  const buttonLabel = myBooking ? "Cancel booking" : availability.isFull ? "Closed" : "Book slot";
+  const buttonLabel = myBooking ? "Cancel booking" : availability.isFull ? "Full" : "Book slot";
 
   return (
     <div className="rounded-2xl border-2 border-[#d4ae3e] bg-[#f9f4ea] p-4 shadow-[inset_0_0_0_1px_rgba(212,174,62,0.2)]">
@@ -82,7 +82,7 @@ function BookingCard({
         </div>
 
         <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${statusTone}`}>
-          {availability.isFull ? "Closed" : `${availability.open} open`}
+          {availability.isFull ? "Full" : `${availability.open} open`}
         </span>
       </div>
 
@@ -732,7 +732,7 @@ export default function Home() {
                               })}
                             </p>
                             <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">
-                              {availability.isFull ? "Closed" : `${availability.open} spots open`}
+                              {availability.isFull ? "Full" : `${availability.open} spots open`}
                             </p>
                           </div>
                         );

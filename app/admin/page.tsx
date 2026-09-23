@@ -251,6 +251,36 @@ export default function AdminPage() {
     void hydrateAdminAccess();
   }, [router]);
 
+  useEffect(() => {
+    if (!supabase) return;
+    const client = supabase;
+
+    const refreshSchedule = async () => {
+      const [nextSessions, nextBookings] = await Promise.all([
+        getSupabaseSessions(),
+        getSupabaseBookings(),
+      ]);
+      setSupabaseSessions(nextSessions);
+      setBookings(nextBookings);
+    };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") void refreshSchedule();
+    };
+    const channel = client
+      .channel("admin-capacity-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => void refreshSchedule())
+      .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => void refreshSchedule())
+      .subscribe();
+
+    window.addEventListener("focus", refreshSchedule);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshSchedule);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+      void client.removeChannel(channel);
+    };
+  }, []);
+
   const activeSessions = useMemo(
     () => {
       if (scheduleView === "monthly") return sortSessionsByDateTime(allSessions);
@@ -1417,30 +1447,14 @@ export default function AdminPage() {
                       {activeSessions.map((session) => {
                         const classInfo = karateClasses.find((klass) => klass.id === session.classId);
                         const availability = getSessionAvailability(session, bookings, guestBookings);
-                        const parentConfirmedCount = bookings.filter(
-                          (booking) => booking.sessionId === session.id && booking.status === "confirmed",
-                        ).length;
-                        const guestConfirmedCount = guestBookings.filter(
-                          (guest) => guest.sessionId === session.id && (guest.status === "confirmed" || !guest.status),
-                        ).length;
-                        const confirmedCountPerSession = parentConfirmedCount + guestConfirmedCount;
+                        const confirmedCountPerSession = availability.confirmed;
                         const cancelledCountPerSession = bookings.filter(
                           (booking) => booking.sessionId === session.id && booking.status === "cancelled",
                         ).length;
-                        const status = availability.isFull
-                          ? "Closed"
-                          : confirmedCountPerSession > 0
-                            ? "Booked"
-                            : cancelledCountPerSession > 0
-                              ? "Cancelled"
-                              : "Open";
-                        const statusClass = status === "Closed"
+                        const status = availability.isFull ? "Full" : "Open";
+                        const statusClass = availability.isFull
                           ? "border-[#bf4d4d] bg-[#f6d9d9] text-[#7d1f1f]"
-                          : status === "Booked"
-                            ? "border-[#3f78ad] bg-[#dcecfb] text-[#1d4e7a]"
-                            : status === "Cancelled"
-                              ? "border-[#b47a2d] bg-[#fff0cc] text-[#805313]"
-                              : "border-[#4aa55d] bg-[#e4f5e3] text-[#1e5b2d]";
+                          : "border-[#4aa55d] bg-[#e4f5e3] text-[#1e5b2d]";
 
                         return (
                           <tr key={session.id} className="border-t border-[#eadcb0]">

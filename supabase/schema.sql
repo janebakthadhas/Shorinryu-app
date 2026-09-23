@@ -21,9 +21,12 @@ create table if not exists public.sessions (
   session_date date not null,
   start_time time not null,
   end_time time not null,
-  capacity int not null default 8,
+  capacity int not null default 9,
   created_at timestamptz not null default now()
 );
+
+alter table public.sessions alter column capacity set default 9;
+update public.sessions set capacity = 9 where capacity <> 9;
 
 create table if not exists public.bookings (
   id uuid primary key default gen_random_uuid(),
