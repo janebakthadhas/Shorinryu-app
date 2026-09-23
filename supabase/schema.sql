@@ -254,7 +254,7 @@ on public.students for select using (
   lower(parent_email) = lower(auth.jwt() ->> 'email')
 );
 
--- Seed the five named class slots used by the app.
+-- Seed the default classes used by the app.
 insert into public.classes (id, name, description, age_group, instructor)
 values
   ('a68f79d1-0f1b-47fe-b84e-9a0d916d0d2b', 'Class 1', 'Thursday evening karate class.', 'All ages', 'Sensei Daniels'),
