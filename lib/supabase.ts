@@ -74,7 +74,7 @@ export async function getSupabaseBookingsForParent(parentEmail: string): Promise
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
-    .eq("parent_email", parentEmail)
+    .ilike("parent_email", parentEmail)
     .order("created_at", { ascending: false });
 
   if (error || !data) {

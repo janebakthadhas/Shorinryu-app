@@ -12,6 +12,9 @@ create table if not exists public.classes (
   created_at timestamptz not null default now()
 );
 
+alter table public.classes add column if not exists age_group text;
+alter table public.classes add column if not exists instructor text;
+
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references public.classes(id) on delete cascade,

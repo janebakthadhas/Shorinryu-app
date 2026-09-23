@@ -18,6 +18,7 @@ import {
   cancelSupabaseBooking,
   createSupabaseBooking,
   getSupabaseBookingsForParent,
+  getSupabaseSessions,
   getSupabaseStudents,
   supabase,
   updateSupabaseBooking,
@@ -209,6 +210,7 @@ const BOOKINGS_STORAGE_KEY = "shorinryu-admin-bookings";
 
 export default function ParentDashboardPage() {
   const [bookings, setBookings] = useState<BookingRecord[]>(initialBookings);
+  const [supabaseSessions, setSupabaseSessions] = useState<Awaited<ReturnType<typeof getSupabaseSessions>>>([]);
   const [guestBookings, setGuestBookings] = useState<Array<{ sessionId: string; status?: string }>>([]);
   const [currentParent, setCurrentParent] = useState<{ name: string; email: string } | null>(null);
   const [viewMode, setViewMode] = useState<"weekly" | "monthly">("weekly");
@@ -296,10 +298,30 @@ export default function ParentDashboardPage() {
   }, [currentParent]);
 
   useEffect(() => {
+    const syncSessions = async () => {
+      if (!supabase) return;
+      setSupabaseSessions(await getSupabaseSessions());
+    };
+
+    void syncSessions();
+  }, []);
+
+  useEffect(() => {
     const syncBookings = async () => {
       if (!currentParent?.email) {
         setBookings(initialBookings);
         return;
+      }
+
+      if (supabase) {
+        try {
+          const nextBookings = await getSupabaseBookingsForParent(currentParent.email);
+          setBookings(nextBookings);
+          localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
+          return;
+        } catch {
+          // fall back to local state when Supabase data is unavailable
+        }
       }
 
       try {
@@ -309,27 +331,11 @@ export default function ParentDashboardPage() {
           const realBookings = Array.isArray(parsedBookings)
             ? parsedBookings.filter((booking) => !booking.id.match(/^booking-[1-6]$/) && !booking.parentEmail.endsWith("@example.com"))
             : [];
-          if (realBookings.length > 0) {
-            setBookings(realBookings);
-            localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(realBookings));
-            return;
-          }
+          setBookings(realBookings);
+          return;
         }
       } catch {
         localStorage.removeItem(BOOKINGS_STORAGE_KEY);
-      }
-
-      if (supabase) {
-        try {
-          const nextBookings = await getSupabaseBookingsForParent(currentParent.email);
-          if (nextBookings.length > 0) {
-            setBookings(nextBookings);
-            localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
-            return;
-          }
-        } catch {
-          // fall back to local state when Supabase data is unavailable
-        }
       }
 
       setBookings(initialBookings);
@@ -351,7 +357,10 @@ export default function ParentDashboardPage() {
   }, [currentParent?.email]);
 
   const currentParentName = currentParent?.name ?? "Parent";
-  const allSessions = useMemo(() => [...initialSessions, ...buildMonthlySessions()], []);
+  const allSessions = useMemo(
+    () => (supabaseSessions.length > 0 ? supabaseSessions : [...initialSessions, ...buildMonthlySessions()]),
+    [supabaseSessions],
+  );
   const allowedBookingDates = useMemo(
     () =>
       [...new Set(
@@ -472,7 +481,7 @@ export default function ParentDashboardPage() {
     let persistedBookingId = draft.id;
     if (supabase) {
       const result = draft.id
-        ? await updateSupabaseBooking({ bookingId: draft.id, sessionId: draft.sessionId, childName: nextChildName })
+        ? await updateSupabaseBooking({ bookingId: draft.id, sessionId: draft.sessionId, childName: nextChildName, status: draft.status })
         : await createSupabaseBooking({
             sessionId: draft.sessionId,
             parentName: nextParentName,
@@ -539,7 +548,9 @@ export default function ParentDashboardPage() {
         }
       }
       setBookings((current) => {
-        const nextList = current.filter((booking) => booking.id !== bookingId);
+        const nextList = current.map((booking) =>
+          booking.id === bookingId ? { ...booking, status: "cancelled" as const } : booking,
+        );
         localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
         return nextList;
       });
@@ -605,8 +616,10 @@ export default function ParentDashboardPage() {
   };
 
   const visibleSessions = useMemo(() => {
-    return viewMode === "monthly" ? buildMonthlySessions() : initialSessions;
-  }, [viewMode]);
+    if (viewMode === "monthly") return allSessions;
+    const weeklyDates = new Set(initialSessions.map((session) => session.date));
+    return allSessions.filter((session) => weeklyDates.has(session.date));
+  }, [allSessions, viewMode]);
 
   const sessionsByClass = useMemo(() => {
     return sortSessionsByDateTime(visibleSessions).map((session) => ({

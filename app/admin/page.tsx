@@ -252,7 +252,22 @@ export default function AdminPage() {
   }, [router]);
 
   const activeSessions = useMemo(
-    () => sortSessionsByDateTime(scheduleView === "weekly" ? initialSessions : allSessions),
+    () => {
+      if (scheduleView === "monthly") return sortSessionsByDateTime(allSessions);
+
+      const sortedSessions = sortSessionsByDateTime(allSessions);
+      const today = new Date();
+      const nextSession = sortedSessions.find((session) => session.date >= today.toISOString().slice(0, 10));
+      const referenceDate = nextSession ? new Date(`${nextSession.date}T00:00:00`) : today;
+      const weekStart = new Date(referenceDate);
+      weekStart.setDate(referenceDate.getDate() - referenceDate.getDay());
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      const startDate = weekStart.toISOString().slice(0, 10);
+      const endDate = weekEnd.toISOString().slice(0, 10);
+
+      return sortedSessions.filter((session) => session.date >= startDate && session.date <= endDate);
+    },
     [scheduleView, allSessions],
   );
 
@@ -558,13 +573,14 @@ export default function AdminPage() {
       }
     }
 
+    const selectedBaseDay = draft.baseClassDays[0]?.toLowerCase();
+    const selectedBaseClassName = draft.baseClassName.toLowerCase();
     const selectedSession = allSessions.find((session) => {
-      const classInfo = karateClasses.find((klass) => klass.id === session.classId);
-      return (
-        session.date === draft.classDate &&
-        classInfo &&
-        getSessionDisplayName(session, classInfo.name) === draft.className
-      );
+      const sessionDay = new Date(`${session.date}T00:00:00`)
+        .toLocaleDateString(undefined, { weekday: "long" })
+        .toLowerCase();
+      return selectedBaseDay === sessionDay &&
+        getSessionDisplayName(session, "Class").toLowerCase() === selectedBaseClassName;
     });
     setStudentRoster((current) => [
       {
@@ -1398,7 +1414,7 @@ export default function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortSessionsByDateTime(scheduleView === "weekly" ? initialSessions : [...initialSessions, ...buildMonthlySessions()]).map((session) => {
+                      {activeSessions.map((session) => {
                         const classInfo = karateClasses.find((klass) => klass.id === session.classId);
                         const availability = getSessionAvailability(session, bookings, guestBookings);
                         const parentConfirmedCount = bookings.filter(
@@ -1411,7 +1427,20 @@ export default function AdminPage() {
                         const cancelledCountPerSession = bookings.filter(
                           (booking) => booking.sessionId === session.id && booking.status === "cancelled",
                         ).length;
-                        const status = availability.isFull ? "Closed" : "Open";
+                        const status = availability.isFull
+                          ? "Closed"
+                          : confirmedCountPerSession > 0
+                            ? "Booked"
+                            : cancelledCountPerSession > 0
+                              ? "Cancelled"
+                              : "Open";
+                        const statusClass = status === "Closed"
+                          ? "border-[#bf4d4d] bg-[#f6d9d9] text-[#7d1f1f]"
+                          : status === "Booked"
+                            ? "border-[#3f78ad] bg-[#dcecfb] text-[#1d4e7a]"
+                            : status === "Cancelled"
+                              ? "border-[#b47a2d] bg-[#fff0cc] text-[#805313]"
+                              : "border-[#4aa55d] bg-[#e4f5e3] text-[#1e5b2d]";
 
                         return (
                           <tr key={session.id} className="border-t border-[#eadcb0]">
@@ -1444,11 +1473,7 @@ export default function AdminPage() {
                             <td className="px-4 py-3 text-[#2f2f2f]">{availability.open}</td>
                             <td className="px-4 py-3">
                               <span
-                                className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${
-                                  availability.isFull
-                                    ? "border-[#bf4d4d] bg-[#f6d9d9] text-[#7d1f1f]"
-                                    : "border-[#4aa55d] bg-[#e4f5e3] text-[#1e5b2d]"
-                                }`}
+                                className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${statusClass}`}
                               >
                                 {status}
                               </span>
