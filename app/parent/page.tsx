@@ -415,6 +415,8 @@ export default function ParentDashboardPage() {
   const baseAssignmentBookingIds = useMemo(() => {
     const ids = new Set<string>();
 
+    const normalizeTime = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
     bookings.forEach((booking) => {
       const session = allSessions.find((item) => item.id === booking.sessionId);
       if (!session) return;
@@ -427,7 +429,8 @@ export default function ParentDashboardPage() {
       const matchesAssignment = children.some((child) =>
         child.name.trim().toLowerCase() === booking.childName.trim().toLowerCase() &&
         (child.baseClassName || child.className) === sessionClassName &&
-        (child.baseClassDays ?? []).includes(sessionDay),
+        (child.baseClassDays ?? []).includes(sessionDay) &&
+        (!child.baseClassTime || normalizeTime(child.baseClassTime).includes(normalizeTime(formatSessionLabel(session).split(" · ")[1] ?? ""))),
       );
 
       if (matchesAssignment) ids.add(booking.id);
@@ -1043,7 +1046,7 @@ export default function ParentDashboardPage() {
                 </div>
 
                 <div className="mb-5 rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class Assignment</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class</p>
                   <p className="mt-2 text-sm text-[#3b3b3b]">Search your linked children by student name, parent name, or parent email. This schedule is set by the admin and is read-only.</p>
                   <input
                     value={baseClassSearch}
