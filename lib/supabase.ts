@@ -203,13 +203,11 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export async function createSupabaseBooking({
   sessionId,
   parentName,
-  parentEmail,
   parentPhone,
   childName,
 }: {
   sessionId: string;
   parentName: string;
-  parentEmail: string;
   parentPhone?: string;
   childName: string;
 }): Promise<{ ok: boolean; bookingId?: string; message?: string }> {
@@ -221,10 +219,19 @@ export async function createSupabaseBooking({
     return { ok: true, message: "Local session ID used." };
   }
 
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const authenticatedEmail = session?.user.email;
+
+  if (!authenticatedEmail) {
+    return { ok: false, message: "Your session has expired. Please sign in again." };
+  }
+
   const { data, error } = await supabase.rpc("book_slot", {
     p_session_id: sessionId,
     p_parent_name: parentName,
-    p_parent_email: parentEmail,
+    p_parent_email: authenticatedEmail,
     p_parent_phone: parentPhone ?? null,
     p_child_name: childName,
   });

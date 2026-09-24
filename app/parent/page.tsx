@@ -231,6 +231,30 @@ export default function ParentDashboardPage() {
 
   useEffect(() => {
     const hydrateParentSession = async () => {
+      if (supabase) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user && session.user.user_metadata?.role === "parent" && session.user.email) {
+          const nextParent = {
+            name: session.user.user_metadata?.full_name || session.user.email.split("@")[0] || "Parent",
+            email: session.user.email,
+          };
+
+          setCurrentParent(nextParent);
+          setChildren(getParentChildrenForEmail(nextParent.email));
+          localStorage.setItem("shorinryu-parent", JSON.stringify(nextParent));
+          localStorage.setItem("shorinryu-role", "parent");
+          return;
+        }
+
+        localStorage.removeItem("shorinryu-parent");
+        localStorage.removeItem("shorinryu-role");
+        router.push("/");
+        return;
+      }
+
       const storedUser = localStorage.getItem("shorinryu-parent");
       if (storedUser) {
         try {
@@ -247,28 +271,6 @@ export default function ParentDashboardPage() {
           }
         } catch {
           localStorage.removeItem("shorinryu-parent");
-        }
-      }
-
-      if (supabase) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (session?.user) {
-          const metadataRole = session.user.user_metadata?.role;
-          if (metadataRole === "parent") {
-            const nextParent = {
-              name: session.user.user_metadata?.full_name || session.user.email?.split("@")?.[0] || "Parent",
-              email: session.user.email || "",
-            };
-
-            setCurrentParent(nextParent);
-            setChildren(getParentChildrenForEmail(nextParent.email));
-            localStorage.setItem("shorinryu-parent", JSON.stringify(nextParent));
-            localStorage.setItem("shorinryu-role", "parent");
-            return;
-          }
         }
       }
 
@@ -518,7 +520,19 @@ export default function ParentDashboardPage() {
 
     const draft = bookingEditor.draft;
     const nextParentName = draft.parentName.trim();
-    const nextEmail = draft.parentEmail.trim() || currentParent?.email || "maya@example.com";
+    let authenticatedEmail = currentParent?.email;
+    if (supabase) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      authenticatedEmail = session?.user.email ?? undefined;
+    }
+    const nextEmail = authenticatedEmail || draft.parentEmail.trim() || "maya@example.com";
+
+    if (supabase && !authenticatedEmail) {
+      setBookingError("Your session has expired. Please sign in again.");
+      return;
+    }
     const nextChildName = draft.childName.trim();
 
     if (!draft.sessionId || !nextParentName || !nextChildName) {
@@ -545,7 +559,6 @@ export default function ParentDashboardPage() {
         : await createSupabaseBooking({
             sessionId: draft.sessionId,
             parentName: nextParentName,
-            parentEmail: nextEmail,
             parentPhone: draft.parentPhone.trim() || undefined,
             childName: nextChildName,
           });
@@ -908,6 +921,7 @@ export default function ParentDashboardPage() {
                 <input
                   type="email"
                   value={bookingEditor.draft.parentEmail}
+                  readOnly={Boolean(supabase)}
                   onChange={(event) =>
                     setBookingEditor((current) =>
                       current
