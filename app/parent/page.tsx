@@ -689,9 +689,20 @@ export default function ParentDashboardPage() {
   };
 
   const visibleSessions = useMemo(() => {
-    if (viewMode === "monthly") return allSessions;
-    const weeklyDates = new Set(initialSessions.map((session) => session.date));
-    return allSessions.filter((session) => weeklyDates.has(session.date));
+    const sortedSessions = sortSessionsByDateTime(allSessions);
+    if (viewMode === "monthly") return sortedSessions;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const nextSession = sortedSessions.find((session) => session.date >= today);
+    const referenceDate = nextSession ? new Date(`${nextSession.date}T00:00:00`) : new Date();
+    const weekStart = new Date(referenceDate);
+    weekStart.setDate(referenceDate.getDate() - referenceDate.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const startDate = weekStart.toISOString().slice(0, 10);
+    const endDate = weekEnd.toISOString().slice(0, 10);
+
+    return sortedSessions.filter((session) => session.date >= startDate && session.date <= endDate);
   }, [allSessions, viewMode]);
 
   const sessionsByClass = useMemo(() => {
@@ -701,9 +712,14 @@ export default function ParentDashboardPage() {
     }));
   }, [visibleSessions]);
 
+  const scheduleMonthAnchor = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const firstUpcomingSession = sortSessionsByDateTime(visibleSessions).find((session) => session.date >= today);
+    return firstUpcomingSession ? new Date(`${firstUpcomingSession.date}T00:00:00`) : new Date();
+  }, [visibleSessions]);
+
   const monthCells = useMemo(() => {
-    const today = new Date();
-    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const currentMonthStart = new Date(scheduleMonthAnchor.getFullYear(), scheduleMonthAnchor.getMonth(), 1);
     const gridStart = new Date(currentMonthStart);
     gridStart.setDate(1 - currentMonthStart.getDay());
     const monthCellsArray: Array<{
@@ -726,14 +742,11 @@ export default function ParentDashboardPage() {
     }
 
     return monthCellsArray;
-  }, [visibleSessions]);
+  }, [scheduleMonthAnchor, visibleSessions]);
 
   const monthLabel = useMemo(() => {
-    const now = new Date();
-    return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(
-      new Date(now.getFullYear(), now.getMonth(), 1),
-    );
-  }, []);
+    return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(scheduleMonthAnchor);
+  }, [scheduleMonthAnchor]);
 
   const handleLogout = async () => {
     if (supabase) {
@@ -1240,7 +1253,9 @@ export default function ParentDashboardPage() {
                   </div>
                   <div className="grid grid-cols-7">
                     {monthCells.map((cell) => {
-                      const isCurrentMonth = cell.date.getMonth() === new Date().getMonth();
+                      const isCurrentMonth =
+                        cell.date.getMonth() === scheduleMonthAnchor.getMonth() &&
+                        cell.date.getFullYear() === scheduleMonthAnchor.getFullYear();
 
                       return (
                         <div

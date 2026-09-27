@@ -283,9 +283,9 @@ export default function AdminPage() {
 
   const activeSessions = useMemo(
     () => {
-      if (scheduleView === "monthly") return sortSessionsByDateTime(allSessions);
-
       const sortedSessions = sortSessionsByDateTime(allSessions);
+      if (scheduleView === "monthly") return sortedSessions;
+
       const today = new Date();
       const nextSession = sortedSessions.find((session) => session.date >= today.toISOString().slice(0, 10));
       const referenceDate = nextSession ? new Date(`${nextSession.date}T00:00:00`) : today;

@@ -24,6 +24,16 @@ function LogoMark() {
   );
 }
 
+function getAuthErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object") {
+    const details = error as { message?: unknown; error_description?: unknown; msg?: unknown };
+    const message = details.message ?? details.error_description ?? details.msg;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+
+  return fallback;
+}
+
 function BookingCard({
   session,
   classInfo,
@@ -158,6 +168,7 @@ export default function Home() {
   const [parentEmail, setParentEmail] = useState("");
   const [parentPassword, setParentPassword] = useState("");
   const [parentError, setParentError] = useState("");
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [selectedGuestSession, setSelectedGuestSession] = useState<string>(initialSessions[0]?.id ?? "");
@@ -288,6 +299,7 @@ export default function Home() {
 
     if (supabase) {
       const fullName = `${trimmedFirst} ${trimmedLast}`;
+      setIsCreatingAccount(true);
 
       try {
         const { data, error } = await supabase.auth.signUp({
@@ -305,7 +317,16 @@ export default function Home() {
           throw error;
         }
 
-        const userName = data.user?.user_metadata?.full_name || fullName;
+        if (!data.user) {
+          throw new Error("Account creation did not complete. Please try again.");
+        }
+
+        if (!data.session) {
+          setParentError("Account created. Check your email to confirm your account, then return here to log in.");
+          return;
+        }
+
+        const userName = data.user.user_metadata?.full_name || fullName;
 
         localStorage.setItem(
           "shorinryu-parent",
@@ -326,8 +347,10 @@ export default function Home() {
         return;
       } catch (error) {
         console.error("Parent account creation failed:", error);
-        setParentError(error instanceof Error ? error.message : "Unable to create the parent account.");
+        setParentError(getAuthErrorMessage(error, "Unable to create the parent account."));
         return;
+      } finally {
+        setIsCreatingAccount(false);
       }
     }
 
@@ -571,9 +594,10 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={handleCreateAccount}
+                        disabled={isCreatingAccount}
                         className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110"
                       >
-                        Create account
+                        {isCreatingAccount ? "Creating account..." : "Create account"}
                       </button>
                       <button
                         type="button"
