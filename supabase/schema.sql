@@ -124,6 +124,8 @@ create or replace function public.book_slot(
   p_child_name text
 ) returns uuid
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_capacity int;
@@ -293,12 +295,14 @@ where (extract(dow from session_date), start_time) in (
   (6, '08:30'::time)
 );
 
--- Seed sample sessions for the next 2-3 weeks.
+-- Seed a rolling 12-week schedule so the parent and admin views do not run
+-- out of upcoming sessions between manual schedule updates.
 with generated as (
   select
-    (current_date + ((4 - extract(dow from current_date)::int + 7) % 7))::date as thursday_date,
-    (current_date + ((5 - extract(dow from current_date)::int + 7) % 7))::date as friday_date,
-    (current_date + ((6 - extract(dow from current_date)::int + 7) % 7))::date as saturday_date
+    (current_date + (weeks.week_offset * 7) + ((4 - extract(dow from current_date)::int + 7) % 7))::date as thursday_date,
+    (current_date + (weeks.week_offset * 7) + ((5 - extract(dow from current_date)::int + 7) % 7))::date as friday_date,
+    (current_date + (weeks.week_offset * 7) + ((6 - extract(dow from current_date)::int + 7) % 7))::date as saturday_date
+  from generate_series(0, 11) as weeks(week_offset)
 )
 insert into public.sessions (class_id, session_date, start_time, end_time, capacity)
 select

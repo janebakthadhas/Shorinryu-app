@@ -68,40 +68,10 @@ function getParentRegistry(): ParentRegistryEntry[] {
   }
 }
 
-function saveParentRegistry(entries: ParentRegistryEntry[]) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  localStorage.setItem(PARENT_REGISTRY_KEY, JSON.stringify(entries));
-}
-
 function getParentChildrenForEmail(email: string) {
   const registry = getParentRegistry();
   const entry = registry.find((parent) => parent.email.toLowerCase() === email.toLowerCase());
   return entry?.children ?? [];
-}
-
-function upsertParentRegistryEntry(parent: { email: string; name: string; password: string; children?: ParentChildRecord[] }) {
-  const registry = getParentRegistry();
-  const nextEntry: ParentRegistryEntry = {
-    email: parent.email,
-    name: parent.name,
-    password: parent.password,
-    children: parent.children?.length ? parent.children : getParentChildrenForEmail(parent.email),
-  };
-
-  const existingIndex = registry.findIndex(
-    (entry) => entry.email.toLowerCase() === parent.email.toLowerCase(),
-  );
-
-  if (existingIndex >= 0) {
-    registry.splice(existingIndex, 1, nextEntry);
-  } else {
-    registry.push(nextEntry);
-  }
-
-  saveParentRegistry(registry);
 }
 
 function LogoMark() {
@@ -145,7 +115,7 @@ function BookingCard({
   const buttonLabel = myBooking ? "Cancel booking" : availability.isFull ? "Full" : "Book slot";
 
   return (
-    <div className="rounded-2xl border-2 border-[#d4ae3e] bg-[#f9f4ea] p-4 shadow-[inset_0_0_0_1px_rgba(212,174,62,0.2)]">
+    <div className="rounded-2xl border-2 border-[#d4ae3e] bg-[#f9f4ea] p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#5d4408]">
@@ -178,11 +148,7 @@ function BookingCard({
         </span>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="text-sm text-[#363636]">
-          <p className="font-bold">{classInfo.instructor}</p>
-        </div>
-
+      <div className="mt-4 flex items-center justify-end gap-3">
         <button
           type="button"
           className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717] transition hover:brightness-110 disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
@@ -223,10 +189,7 @@ export default function ParentDashboardPage() {
     options: BookingRecord[];
   } | null>(null);
   const [bookingError, setBookingError] = useState("");
-  const [childNameDraft, setChildNameDraft] = useState("");
-  const [childAgeDraft, setChildAgeDraft] = useState("");
   const [children, setChildren] = useState<ParentChildRecord[]>([]);
-  const [baseClassSearch, setBaseClassSearch] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -471,12 +434,6 @@ export default function ParentDashboardPage() {
     return [...new Set([...namesFromChildren, ...namesFromBookings])];
   }, [children, bookings, currentParentName, currentParent]);
 
-  const visibleBaseChildren = useMemo(() => {
-    const query = baseClassSearch.trim().toLowerCase();
-    if (!query) return children;
-    return children.filter((child) => [child.name, currentParent?.name, currentParent?.email].some((value) => value?.toLowerCase().includes(query)));
-  }, [baseClassSearch, children, currentParent]);
-
   const openCreateBooking = (sessionId?: string) => {
     setBookingError("");
     const defaultDate = allowedBookingDates[0] ?? "";
@@ -645,47 +602,6 @@ export default function ParentDashboardPage() {
       return nextList;
     });
     setBookingEditor(null);
-  };
-
-  const handleAddChild = () => {
-    const trimmedChild = childNameDraft.trim();
-    const trimmedAge = childAgeDraft.trim();
-    if (!trimmedChild || !currentParent?.email) {
-      return;
-    }
-
-    const registry = getParentRegistry();
-    const existingEntry = registry.find(
-      (entry) => entry.email.toLowerCase() === currentParent.email.toLowerCase(),
-    );
-
-    const nextChildren = existingEntry?.children ?? children;
-    const alreadyExists = nextChildren.some((child) => child.name.toLowerCase() === trimmedChild.toLowerCase());
-
-    if (alreadyExists) {
-      setChildNameDraft("");
-      setChildAgeDraft("");
-      return;
-    }
-
-    const updatedChildren = [...nextChildren, {
-      name: trimmedChild,
-      age: trimmedAge || "Not set",
-      belt: "White",
-      className: "Class 1",
-      classTime: "Thursday 5:30 PM - 6:30 PM",
-    }];
-
-    upsertParentRegistryEntry({
-      email: currentParent.email,
-      name: currentParent.name,
-      password: "",
-      children: updatedChildren,
-    });
-
-    setChildren(updatedChildren);
-    setChildNameDraft("");
-    setChildAgeDraft("");
   };
 
   const visibleSessions = useMemo(() => {
@@ -1072,19 +988,13 @@ export default function ParentDashboardPage() {
                   <h3 className="text-xl font-black uppercase text-[#111111]">My children</h3>
                 </div>
 
-                <div className="mb-5 rounded-[18px] border border-[#d9bb5c] bg-[#f7f2ea] p-4">
+                <div className="mb-5 rounded-[18px] bg-[#f7f2ea] p-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class</p>
-                  <p className="mt-2 text-sm text-[#3b3b3b]">Search your linked children by student name, parent name, or parent email. This schedule is set by the admin and is read-only.</p>
-                  <input
-                    value={baseClassSearch}
-                    onChange={(event) => setBaseClassSearch(event.target.value)}
-                    placeholder="Search student, parent, or email"
-                    className="mt-3 w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
-                  />
+                  <p className="mt-2 text-sm text-[#3b3b3b]">This schedule is set by the admin and is read-only.</p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {visibleBaseChildren.length > 0 ? (
-                      visibleBaseChildren.map((child) => (
-                      <div key={`${child.name}-${child.age}`} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
+                    {children.length > 0 ? (
+                      children.map((child) => (
+                      <div key={`${child.name}-${child.age}`} className="rounded-2xl bg-[#f7f2ea] p-3">
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Student</p>
                         <p className="mt-2 text-lg font-black text-[#111111]">{child.name}</p>
                         <p className="mt-1 text-sm text-[#3b3b3b]">Age: {child.age || "Not set"}</p>
@@ -1103,45 +1013,9 @@ export default function ParentDashboardPage() {
                       </div>
                       ))
                   ) : (
-                      <p className="text-sm text-[#3b3b3b]">No linked child matches that search.</p>
+                      <p className="text-sm text-[#3b3b3b]">No linked children are available yet.</p>
                   )}
                   </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {children.length > 0 ? children.map((child) => (
-                    <div key={`${child.name}-${child.age}-summary`} className="rounded-2xl border border-[#d9bb5c] bg-[#f7f2ea] p-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Student</p>
-                      <p className="mt-2 text-lg font-black text-[#111111]">{child.name}</p>
-                      <p className="mt-1 text-sm text-[#3b3b3b]">Age: {child.age || "Not set"}</p>
-                    </div>
-                  )) : (
-                    <p className="text-sm text-[#3b3b3b]">No children added yet. Add your child or family member below to auto-fill future bookings.</p>
-                  )}
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-[1.5fr_0.7fr_auto]">
-                  <input
-                    type="text"
-                    value={childNameDraft}
-                    onChange={(event) => setChildNameDraft(event.target.value)}
-                    placeholder="Child or family member name"
-                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c]"
-                  />
-                  <input
-                    type="text"
-                    value={childAgeDraft}
-                    onChange={(event) => setChildAgeDraft(event.target.value)}
-                    placeholder="Age"
-                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none ring-0 placeholder:text-[#7c7c7c]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddChild}
-                    className="rounded-full border border-[#b88a17] bg-[#d9b344] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
-                  >
-                    Add child / family member
-                  </button>
                 </div>
               </div>
 
@@ -1314,7 +1188,7 @@ export default function ParentDashboardPage() {
               ) : (
                 <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {sessionsByClass.map(({ classInfo, sessions }) => (
-                    <div key={sessions[0]?.id ?? classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                    <div key={sessions[0]?.id ?? classInfo.id} className="space-y-3">
                       <div className="space-y-3">
                         {sessions.map((session) => (
                           <BookingCard

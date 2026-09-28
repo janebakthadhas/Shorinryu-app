@@ -210,14 +210,6 @@ export default function Home() {
     setParentError("");
   };
 
-  const openGuestBooking = () => {
-    setActivePrimaryAction("guest");
-    setShowParentLogin(false);
-    setShowCreateAccount(false);
-    setGuestFlow("details");
-    setParentError("");
-  };
-
   const handleParentLogin = async (event?: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
 
@@ -468,16 +460,16 @@ export default function Home() {
             </header>
 
             <section className="mb-8 rounded-[26px] border-4 border-[#c7a531] bg-[#faf7f0] p-5 sm:p-6">
-              <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+              <div className="grid gap-6">
                 <div>
-                  <h2 className="text-3xl font-black uppercase leading-tight text-[#111111] sm:text-4xl">
+                  <h2 className="text-lg font-black uppercase leading-tight text-[#111111] sm:text-xl">
                     Classes for families, beginners, and first-time guests.
                   </h2>
                   <p className="mt-4 max-w-xl text-base text-[#323232]">
-                    Weekly karate classes in St. Johns County for kids, teens, and adults. Explore the schedule, create a parent account, or book a single guest trial session.
+                    Weekly karate classes in St. Johns County for kids, teens, and adults. Explore the schedule or create a parent account.
                   </p>
 
-                  <div className="mt-6 grid gap-3 sm:max-w-xl sm:grid-cols-2">
+                  <div className="mt-6 grid gap-3 sm:max-w-xl">
                     <button
                       type="button"
                       onClick={openCreateAccount}
@@ -489,35 +481,9 @@ export default function Home() {
                     >
                       Create account
                     </button>
-                    <button
-                      type="button"
-                      onClick={openGuestBooking}
-                      className={`rounded-full border px-5 py-3 text-sm font-black uppercase tracking-[0.08em] transition hover:brightness-110 ${
-                        activePrimaryAction === "guest"
-                          ? "border-[#b88a17] bg-[#d9b344] text-[#171717] shadow-[0_0_0_3px_rgba(217,179,68,0.18)]"
-                          : "border-[#b88a17] bg-[#fffdf8] text-[#171717]"
-                      }`}
-                    >
-                      Book as guest
-                    </button>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border-2 border-[#c7a531] bg-[#fffdf8] p-5 shadow-[0_0_0_3px_rgba(199,165,49,0.18)]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#5a4309]">Quick access</p>
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#5a4309]">Next class</p>
-                      <p className="mt-2 text-lg font-black text-[#111111]">Class 1</p>
-                      <p className="text-sm text-[#444444]">Thursday · 5:30 PM</p>
-                    </div>
-                    <div className="rounded-2xl border border-[#d9bb5c] bg-[#f6f0e5] p-3">
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#5a4309]">Location</p>
-                      <p className="mt-2 text-lg font-black text-[#111111]">St. Johns County</p>
-                      <p className="text-sm text-[#444444]">Community training space</p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -719,14 +685,13 @@ export default function Home() {
               <div className="mb-5 flex flex-col gap-1 text-center sm:flex-row sm:items-end sm:justify-between sm:text-left">
                 <div>
                   <p className="text-sm font-black uppercase tracking-[0.26em] text-[#5a4309]">Public schedule</p>
-                  <h3 className="mt-2 text-2xl font-black uppercase text-[#111111] sm:text-3xl">Upcoming classes</h3>
+                  <h3 className="mt-2 text-lg font-black uppercase text-[#111111] sm:text-xl">Upcoming classes</h3>
                 </div>
-                <p className="text-sm font-semibold text-[#4a4a4a]">Choose a session to see availability.</p>
               </div>
 
               <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {sessionsByClass.map(({ classInfo, sessions }) => (
-                  <div key={sessions[0]?.id ?? classInfo.id} className="rounded-[20px] border-2 border-[#c7a531] bg-[#fffdf8] p-4">
+                  <div key={sessions[0]?.id ?? classInfo.id} className="space-y-3">
                     <div className="space-y-3">
                       {sessions.map((session) => {
                         const availability = getSessionAvailability(session, bookings, guestBookings);
@@ -769,16 +734,11 @@ export default function Home() {
 
             <div className="mt-8 rounded-[26px] border-4 border-[#c7a531] bg-[#f5f0e5] p-5 text-center text-[#111111]">
               <p className="text-sm font-black uppercase tracking-[0.28em] text-[#5a4309]">About the academy</p>
-              <div className="mt-4 grid gap-3 text-left md:grid-cols-3">
+              <div className="mt-4 grid gap-3 text-left md:grid-cols-2">
                 <div className="rounded-2xl border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Location</p>
                   <p className="mt-2 text-base font-bold">St. Johns County</p>
                   <p className="mt-2 text-sm text-[#4d4d4d]">Community training space and family-friendly karate classes.</p>
-                </div>
-                <div className="rounded-2xl border-2 border-[#c7a531] bg-[#fffdf8] p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Who it’s for</p>
-                  <p className="mt-2 text-base font-bold">Kids, teens, and adults</p>
-                  <p className="mt-2 text-sm text-[#4d4d4d]">Beginner-friendly instruction and structured belt progression.</p>
                 </div>
                 <div className="rounded-2xl border-2 border-[#c7a531] bg-[#fffdf8] p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Contact</p>
