@@ -262,6 +262,34 @@ on public.students for select using (
   lower(parent_email) = lower(auth.jwt() ->> 'email')
 );
 
+-- Enable the tables used by live Admin/Parent schedule refreshes for Supabase Realtime.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'bookings'
+    ) then
+      execute 'alter publication supabase_realtime add table public.bookings';
+    end if;
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'sessions'
+    ) then
+      execute 'alter publication supabase_realtime add table public.sessions';
+    end if;
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'students'
+    ) then
+      execute 'alter publication supabase_realtime add table public.students';
+    end if;
+  end if;
+end;
+$$;
+
 -- Seed the default classes used by the app.
 insert into public.classes (id, name, description, age_group, instructor)
 values
