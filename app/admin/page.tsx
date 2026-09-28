@@ -256,12 +256,26 @@ export default function AdminPage() {
     const client = supabase;
 
     const refreshSchedule = async () => {
-      const [nextSessions, nextBookings] = await Promise.all([
+      const [nextSessions, nextBookings, persistedStudents] = await Promise.all([
         getSupabaseSessions(),
         getSupabaseBookings(),
+        getSupabaseStudents(),
       ]);
       setSupabaseSessions(nextSessions);
       setBookings(nextBookings);
+      setStudentRoster(persistedStudents.map((student) => ({
+        name: student.name,
+        parent: student.parentName,
+        parentEmail: student.parentEmail,
+        parentPhone: student.parentPhone,
+        belt: student.belt,
+        className: student.baseClassName,
+        classTime: student.baseClassTime,
+        baseClassDays: student.baseClassDays,
+        baseClassName: student.baseClassName,
+        baseClassTime: student.baseClassTime,
+      })));
+      localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
     };
     const refreshOnVisibility = () => {
       if (document.visibilityState === "visible") void refreshSchedule();
@@ -270,6 +284,7 @@ export default function AdminPage() {
       .channel("admin-capacity-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => void refreshSchedule())
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => void refreshSchedule())
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => void refreshSchedule())
       .subscribe();
 
     window.addEventListener("focus", refreshSchedule);
@@ -578,7 +593,9 @@ export default function AdminPage() {
       }
     }
     setBookings((current) => {
-      const nextList = current.filter((booking) => booking.id !== bookingId);
+      const nextList = current.map((booking) =>
+        booking.id === bookingId ? { ...booking, status: "cancelled" as const } : booking,
+      );
       localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextList));
       return nextList;
     });
