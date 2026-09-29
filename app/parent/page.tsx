@@ -417,7 +417,9 @@ export default function ParentDashboardPage() {
     return ids;
   }, [allSessions, bookings, baseClassAssignments]);
   const additionalClassBookings = useMemo(
-    () => myBookings.filter((booking) => !baseAssignmentBookingIds.has(booking.id)),
+    () => myBookings.filter(
+      (booking) => booking.status === "confirmed" && !baseAssignmentBookingIds.has(booking.id),
+    ),
     [baseAssignmentBookingIds, myBookings],
   );
   const isDuplicateBooking = Boolean(

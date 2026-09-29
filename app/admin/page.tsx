@@ -502,7 +502,9 @@ export default function AdminPage() {
     () => bookingsByClass
       .map((group) => ({
         ...group,
-        bookings: group.bookings.filter((booking) => !baseAssignmentBookingIds.has(booking.id)),
+        bookings: group.bookings.filter(
+          (booking) => booking.status === "confirmed" && !baseAssignmentBookingIds.has(booking.id),
+        ),
       }))
       .filter((group) => group.bookings.length > 0),
     [baseAssignmentBookingIds, bookingsByClass],
