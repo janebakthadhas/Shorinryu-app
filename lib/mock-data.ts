@@ -104,20 +104,81 @@ export const initialSessions: SessionRecord[] = buildWeeklySessions();
 
 export const initialBookings: BookingRecord[] = [];
 
+export type BaseClassAssignment = {
+  name: string;
+  parentEmail?: string;
+  className?: string;
+  baseClassDays?: string[];
+  baseClassName?: string;
+  classTime?: string;
+  baseClassTime?: string;
+};
+
+function normalizeClassName(value: string) {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return normalized === "earlybirds" ? "earlybirds" : normalized;
+}
+
+function getStartMinute(value: string) {
+  const match = value.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const period = match[3]?.toUpperCase();
+  if (period) {
+    hours %= 12;
+    if (period === "PM") hours += 12;
+  }
+  return hours * 60 + minutes;
+}
+
+export function baseAssignmentMatchesSession(assignment: BaseClassAssignment, session: SessionRecord) {
+  const sessionClassName = getSessionDisplayName(
+    session,
+    karateClasses.find((klass) => klass.id === session.classId)?.name ?? "Class",
+  );
+  const assignedClassName = assignment.baseClassName || assignment.className || "";
+  if (normalizeClassName(assignedClassName) !== normalizeClassName(sessionClassName)) return false;
+
+  const weekday = new Date(`${session.date}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
+  if (!(assignment.baseClassDays ?? []).some((day) => day.toLowerCase() === weekday.toLowerCase())) return false;
+
+  const assignedStart = getStartMinute(assignment.baseClassTime || assignment.classTime || "");
+  const sessionStart = getStartMinute(session.startTime);
+  return assignedStart !== null && assignedStart === sessionStart;
+}
+
 export function getSessionAvailability(
   session: SessionRecord,
   bookings: BookingRecord[],
   guestBookings: Array<{ sessionId: string; status?: string }> = [],
+  baseAssignments: BaseClassAssignment[] = [],
 ) {
-  const parentConfirmed = bookings.filter(
-    (booking) => booking.sessionId === session.id && booking.status === "confirmed",
+  const assignedStudents = new Map<string, BaseClassAssignment>();
+  baseAssignments.forEach((assignment) => {
+    if (!assignment.name.trim() || !baseAssignmentMatchesSession(assignment, session)) return;
+    const key = `${assignment.parentEmail?.trim().toLowerCase() ?? ""}|${assignment.name.trim().toLowerCase()}`;
+    assignedStudents.set(key, assignment);
+  });
+
+  const bookingsForSession = bookings.filter((booking) => booking.sessionId === session.id);
+  const matchesAssignment = (booking: BookingRecord, assignment: BaseClassAssignment) =>
+    booking.childName.trim().toLowerCase() === assignment.name.trim().toLowerCase() &&
+    (!assignment.parentEmail || booking.parentEmail.trim().toLowerCase() === assignment.parentEmail.trim().toLowerCase());
+  const hasCancelledOverride = (assignment: BaseClassAssignment) =>
+    bookingsForSession.some((booking) => booking.status === "cancelled" && matchesAssignment(booking, assignment));
+  const confirmedAssignments = [...assignedStudents.values()].filter((assignment) => !hasCancelledOverride(assignment));
+  const additionalConfirmed = bookingsForSession.filter((booking) =>
+    booking.status === "confirmed" &&
+    ![...assignedStudents.values()].some((assignment) => matchesAssignment(booking, assignment)),
   ).length;
 
   const guestConfirmed = (guestBookings || []).filter(
     (guest) => guest.sessionId === session.id && (guest.status === "confirmed" || !guest.status),
   ).length;
 
-  const confirmed = parentConfirmed + guestConfirmed;
+  const confirmed = confirmedAssignments.length + additionalConfirmed + guestConfirmed;
 
   return {
     confirmed,

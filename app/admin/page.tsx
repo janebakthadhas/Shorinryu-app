@@ -326,7 +326,7 @@ export default function AdminPage() {
   const cancelledCount = parentCancelled + guestCancelled;
 
   const openSeats = activeSessions.reduce(
-    (sum, session) => sum + getSessionAvailability(session, bookings, guestBookings).open,
+    (sum, session) => sum + getSessionAvailability(session, bookings, guestBookings, studentRoster).open,
     0,
   );
 
@@ -1513,7 +1513,7 @@ export default function AdminPage() {
                     <tbody>
                       {activeSessions.map((session) => {
                         const classInfo = karateClasses.find((klass) => klass.id === session.classId);
-                        const availability = getSessionAvailability(session, bookings, guestBookings);
+                        const availability = getSessionAvailability(session, bookings, guestBookings, studentRoster);
                         const confirmedCountPerSession = availability.confirmed;
                         const cancelledCountPerSession = bookings.filter(
                           (booking) => booking.sessionId === session.id && booking.status === "cancelled",

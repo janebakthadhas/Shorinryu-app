@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildMonthlySessions,
+  baseAssignmentMatchesSession,
   formatSessionLabel,
   getSessionAvailability,
   getSessionDisplayName,
@@ -28,6 +29,7 @@ const PARENT_REGISTRY_KEY = "shorinryu-parent-registry";
 
 type ParentChildRecord = {
   name: string;
+  parentEmail?: string;
   age?: string;
   belt?: string;
   className?: string;
@@ -89,6 +91,7 @@ function BookingCard({
   classInfo,
   bookings,
   guestBookings = [],
+  baseAssignments,
   onBook,
   onCancel,
   currentParentName,
@@ -97,11 +100,12 @@ function BookingCard({
   classInfo: (typeof karateClasses)[number];
   bookings: BookingRecord[];
   guestBookings?: Array<{ sessionId: string; status?: string }>;
+  baseAssignments: ParentChildRecord[];
   onBook: (sessionId: string) => void;
   onCancel: (sessionId: string) => void;
   currentParentName: string;
 }) {
-  const availability = getSessionAvailability(session, bookings, guestBookings);
+  const availability = getSessionAvailability(session, bookings, guestBookings, baseAssignments);
   const myBooking = bookings.find(
     (booking) =>
       booking.sessionId === session.id &&
@@ -251,12 +255,13 @@ export default function ParentDashboardPage() {
         .filter((student) => student.parentEmail.toLowerCase() === currentParent.email.toLowerCase())
         .map((student) => ({
           name: student.name,
+          parentEmail: student.parentEmail,
           belt: student.belt,
           baseClassDays: student.baseClassDays,
           baseClassName: student.baseClassName,
           baseClassTime: student.baseClassTime,
         }));
-      if (parentChildren.length > 0) setChildren(parentChildren);
+      setChildren(parentChildren);
     };
 
     void syncStudents();
@@ -326,12 +331,23 @@ export default function ParentDashboardPage() {
     const client = supabase;
 
     const refreshSchedule = async () => {
-      const [nextSessions, nextBookings] = await Promise.all([
+      const [nextSessions, nextBookings, persistedStudents] = await Promise.all([
         getSupabaseSessions(),
         getSupabaseBookingsForParent(currentParent.email),
+        getSupabaseStudents(),
       ]);
       setSupabaseSessions(nextSessions);
       setBookings(nextBookings);
+      setChildren(persistedStudents
+        .filter((student) => student.parentEmail.toLowerCase() === currentParent.email.toLowerCase())
+        .map((student) => ({
+          name: student.name,
+          parentEmail: student.parentEmail,
+          belt: student.belt,
+          baseClassDays: student.baseClassDays,
+          baseClassName: student.baseClassName,
+          baseClassTime: student.baseClassTime,
+        })));
     };
     const refreshOnVisibility = () => {
       if (document.visibilityState === "visible") void refreshSchedule();
@@ -340,6 +356,7 @@ export default function ParentDashboardPage() {
       .channel("parent-capacity-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => void refreshSchedule())
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => void refreshSchedule())
+      .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => void refreshSchedule())
       .subscribe();
 
     window.addEventListener("focus", refreshSchedule);
@@ -377,32 +394,28 @@ export default function ParentDashboardPage() {
       ),
     [bookings, currentParent?.email, currentParentName],
   );
+  const baseClassAssignments = useMemo(
+    () => children.map((child) => ({ ...child, parentEmail: child.parentEmail ?? currentParent?.email })),
+    [children, currentParent?.email],
+  );
   const baseAssignmentBookingIds = useMemo(() => {
     const ids = new Set<string>();
-
-    const normalizeTime = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
     bookings.forEach((booking) => {
       const session = allSessions.find((item) => item.id === booking.sessionId);
       if (!session) return;
 
-      const sessionClassName = getSessionDisplayName(
-        session,
-        karateClasses.find((klass) => klass.id === session.classId)?.name ?? "Class",
-      );
-      const sessionDay = new Date(`${session.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long" });
-      const matchesAssignment = children.some((child) =>
+      const matchesAssignment = baseClassAssignments.some((child) =>
         child.name.trim().toLowerCase() === booking.childName.trim().toLowerCase() &&
-        (child.baseClassName || child.className) === sessionClassName &&
-        (child.baseClassDays ?? []).includes(sessionDay) &&
-        (!child.baseClassTime || normalizeTime(child.baseClassTime).includes(normalizeTime(formatSessionLabel(session).split(" · ")[1] ?? ""))),
+        (!child.parentEmail || child.parentEmail.toLowerCase() === booking.parentEmail.toLowerCase()) &&
+        baseAssignmentMatchesSession(child, session),
       );
 
       if (matchesAssignment) ids.add(booking.id);
     });
 
     return ids;
-  }, [allSessions, bookings, children]);
+  }, [allSessions, bookings, baseClassAssignments]);
   const additionalClassBookings = useMemo(
     () => myBookings.filter((booking) => !baseAssignmentBookingIds.has(booking.id)),
     [baseAssignmentBookingIds, myBookings],
@@ -1144,7 +1157,7 @@ export default function ParentDashboardPage() {
 
                           <div className="space-y-2">
                             {cell.sessions.map((session) => {
-                              const availability = getSessionAvailability(session, bookings);
+                              const availability = getSessionAvailability(session, bookings, guestBookings, baseClassAssignments);
                               const myBooking = bookings.some(
                                 (booking) =>
                                   booking.sessionId === session.id &&
@@ -1197,6 +1210,7 @@ export default function ParentDashboardPage() {
                             classInfo={classInfo}
                             bookings={bookings}
                             guestBookings={guestBookings}
+                            baseAssignments={baseClassAssignments}
                             onBook={handleBook}
                             onCancel={handleCancel}
                             currentParentName={currentParentName}
