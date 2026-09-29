@@ -91,6 +91,18 @@ const STUDENT_SESSION_OPTIONS = [...initialSessions, ...buildMonthlySessions()].
   };
 });
 
+const BASE_CLASS_SCHEDULE: Record<string, { day: string; time: string }> = {
+  "Class 1": { day: "Thursday", time: "5:30 PM - 6:30 PM" },
+  "Class 2": { day: "Thursday", time: "6:45 PM - 7:45 PM" },
+  "Class 3": { day: "Friday", time: "5:30 PM - 6:30 PM" },
+  "Class 4": { day: "Friday", time: "6:45 PM - 7:45 PM" },
+  "Early birds": { day: "Saturday", time: "8:30 AM - 9:30 AM" },
+};
+
+function normalizeClassName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 const BOOKINGS_STORAGE_KEY = "shorinryu-admin-bookings";
 const GUEST_BOOKINGS_STORAGE_KEY = "shorinryu-guest-bookings";
 type RegisteredStudent = {
@@ -135,6 +147,7 @@ export default function AdminPage() {
     draft: StudentRecord;
   } | null>(null);
   const [studentError, setStudentError] = useState("");
+  const [showStudentConfirmation, setShowStudentConfirmation] = useState(false);
   const router = useRouter();
 
   const allSessions = useMemo(
@@ -604,6 +617,7 @@ export default function AdminPage() {
 
   const openCreateStudent = () => {
     setStudentError("");
+    setShowStudentConfirmation(false);
     setStudentEditor({
       mode: "create",
       draft: {
@@ -625,7 +639,7 @@ export default function AdminPage() {
     });
   };
 
-  const saveStudentChanges = async () => {
+  const requestStudentSave = () => {
     if (!studentEditor) {
       return;
     }
@@ -633,7 +647,6 @@ export default function AdminPage() {
     const draft = studentEditor.draft;
     const nextName = draft.name.trim();
     const nextParent = draft.parent.trim();
-    const nextParentEmail = draft.parentEmail?.trim() ?? "";
 
     if (!nextName || !nextParent) {
       return;
@@ -653,6 +666,25 @@ export default function AdminPage() {
       return;
     }
 
+    setStudentError("");
+    setShowStudentConfirmation(true);
+  };
+
+  const confirmStudentSave = async () => {
+    if (!studentEditor) return;
+    const draft = studentEditor.draft;
+    const nextName = draft.name.trim();
+    const nextParent = draft.parent.trim();
+    const nextParentEmail = draft.parentEmail?.trim() ?? "";
+    const baseClassDays = draft.baseClassDays ?? [];
+    const baseClassName = draft.baseClassName ?? "";
+    const baseClassTime = draft.baseClassTime ?? "";
+
+    if (!baseClassDays.length || !baseClassName || !baseClassTime) {
+      setStudentError("Assign at least one Base Class day and class.");
+      return;
+    }
+
     if (supabase) {
       const result = await createSupabaseStudent({
         name: nextName,
@@ -660,9 +692,9 @@ export default function AdminPage() {
         parentEmail: nextParentEmail,
         parentPhone: draft.parentPhone?.trim() || undefined,
         belt: draft.belt || "White",
-        baseClassDays: draft.baseClassDays,
-        baseClassName: draft.baseClassName,
-        baseClassTime: draft.baseClassTime,
+        baseClassDays,
+        baseClassName,
+        baseClassTime,
       });
       if (!result.ok) {
         setStudentError(result.message ?? "Unable to save student.");
@@ -670,14 +702,15 @@ export default function AdminPage() {
       }
     }
 
-    const selectedBaseDay = draft.baseClassDays[0]?.toLowerCase();
-    const selectedBaseClassName = draft.baseClassName.toLowerCase();
+    const selectedBaseDay = baseClassDays[0]?.toLowerCase();
+    const selectedBaseClassName = normalizeClassName(baseClassName);
     const selectedSession = allSessions.find((session) => {
       const sessionDay = new Date(`${session.date}T00:00:00`)
         .toLocaleDateString(undefined, { weekday: "long" })
         .toLowerCase();
       return selectedBaseDay === sessionDay &&
-        getSessionDisplayName(session, "Class").toLowerCase() === selectedBaseClassName;
+        normalizeClassName(getSessionDisplayName(session, "Class")) === selectedBaseClassName &&
+        STUDENT_SESSION_OPTIONS.find((option) => option.id === session.id)?.time === baseClassTime;
     });
     setStudentRoster((current) => [
       {
@@ -754,6 +787,7 @@ export default function AdminPage() {
       }
     }
 
+    setShowStudentConfirmation(false);
     setStudentEditor(null);
   };
 
@@ -1176,38 +1210,39 @@ export default function AdminPage() {
               <div className="rounded-[18px] border-2 border-[#c7a531] bg-[#f7f2ea] p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5a4309]">Base Class assignment</p>
                 <p className="mt-2 text-xs text-[#4a4a4a]">Recurring weekly schedule set by the admin. Maximum capacity is 9 students per slot.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => setStudentEditor((current) => {
-                        if (!current) return current;
-                        const days = current.draft.baseClassDays ?? [];
-                        return { ...current, draft: { ...current.draft, baseClassDays: days.includes(day) ? days.filter((item) => item !== day) : [...days, day] } };
-                      })}
-                      className={`rounded-full border px-3 py-2 text-xs font-black ${studentEditor.draft.baseClassDays?.includes(day) ? "border-[#a57a10] bg-[#d9b344]" : "border-[#d9bb5c] bg-[#fffdf8]"}`}
-                    >
-                      {day.slice(0, 3)}
-                    </button>
-                  ))}
+                <div className="mt-3">
+                  <p className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Class day</p>
+                  <div className="w-full rounded-full border-2 border-[#d9bb5c] bg-[#f5f0e5] px-4 py-3 text-sm font-semibold text-[#3b3b3b]">
+                    {BASE_CLASS_SCHEDULE[studentEditor.draft.baseClassName ?? "Class 1"]?.day ?? "Thursday"}
+                  </div>
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <select
                     value={studentEditor.draft.baseClassName ?? "Class 1"}
-                    onChange={(event) => setStudentEditor((current) => current ? { ...current, draft: { ...current.draft, baseClassName: event.target.value } } : current)}
+                    onChange={(event) => {
+                      const baseClassName = event.target.value;
+                      const baseSchedule = BASE_CLASS_SCHEDULE[baseClassName] ?? BASE_CLASS_SCHEDULE["Class 1"];
+                      setStudentEditor((current) => current ? {
+                        ...current,
+                        draft: {
+                          ...current.draft,
+                          baseClassName,
+                          baseClassDays: [baseSchedule.day],
+                          baseClassTime: baseSchedule.time,
+                          className: baseClassName,
+                          classTime: baseSchedule.time,
+                        },
+                      } : current);
+                      setStudentError("");
+                    }}
                     className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
                   >
                     {["Class 1", "Class 2", "Class 3", "Class 4", "Early birds"].map((label) => <option key={label} value={label}>{label}</option>)}
                   </select>
-                  <select
-                    value={studentEditor.draft.baseClassTime ?? ""}
-                    onChange={(event) => setStudentEditor((current) => current ? { ...current, draft: { ...current.draft, baseClassTime: event.target.value } } : current)}
-                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
-                  >
-                    {[...new Set(STUDENT_SESSION_OPTIONS.map((option) => option.time))].map((time) => <option key={time} value={time}>{time}</option>)}
-                  </select>
                 </div>
+                <p className="mt-3 text-sm font-bold text-[#3b3b3b]">
+                  Class time: {BASE_CLASS_SCHEDULE[studentEditor.draft.baseClassName ?? "Class 1"]?.time ?? "Select a class"}
+                </p>
                 {studentError ? <p className="mt-3 text-sm font-bold text-[#8b1e1e]">{studentError}</p> : null}
               </div>
 
@@ -1242,87 +1277,6 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Class date</label>
-                  <select
-                    value={studentEditor.draft.classDate ?? ""}
-                    onChange={(event) => {
-                      const nextDate = event.target.value;
-                      const firstSession = STUDENT_SESSION_OPTIONS.find((option) => option.date === nextDate);
-
-                      setStudentEditor((current) =>
-                        current && firstSession
-                          ? {
-                              ...current,
-                              draft: {
-                                ...current.draft,
-                                classDate: firstSession.date,
-                                className: firstSession.name,
-                                classTime: firstSession.time,
-                              },
-                            }
-                          : current,
-                      );
-                    }}
-                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
-                  >
-                    {[...new Set(STUDENT_SESSION_OPTIONS.map((option) => option.date))].map((date) => (
-                      <option key={date} value={date}>
-                        {new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-                          weekday: "long",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Class</label>
-                  <select
-                    value={studentEditor.draft.className}
-                    onChange={(event) =>
-                      setStudentEditor((current) =>
-                        current
-                          ? (() => {
-                              const selectedSession = STUDENT_SESSION_OPTIONS.find(
-                                (option) => option.name === event.target.value && option.date === current.draft.classDate,
-                              );
-
-                              return selectedSession
-                                ? {
-                                    ...current,
-                                    draft: {
-                                      ...current.draft,
-                                      classDate: selectedSession.date,
-                                      className: selectedSession.name,
-                                      classTime: selectedSession.time,
-                                    },
-                                  }
-                                : current;
-                            })()
-                          : current,
-                      )
-                    }
-                    className="w-full rounded-full border-2 border-[#c7a531] bg-[#fffdf8] px-4 py-3 text-sm text-[#111111] outline-none"
-                  >
-                    {STUDENT_SESSION_OPTIONS
-                      .filter((option) => option.date === studentEditor.draft.classDate)
-                      .map((option) => (
-                      <option key={option.id} value={option.name}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#5a4309]">Class time</label>
-                <div className="w-full rounded-full border-2 border-[#d9bb5c] bg-[#f5f0e5] px-4 py-3 text-sm font-semibold text-[#3b3b3b]">
-                  {studentEditor.draft.classTime || "Select a class"}
-                </div>
               </div>
             </div>
 
@@ -1336,10 +1290,44 @@ export default function AdminPage() {
               </button>
               <button
                 type="button"
-                onClick={saveStudentChanges}
+                onClick={requestStudentSave}
                 className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
               >
-                Save student
+                Review assignment
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {studentEditor && showStudentConfirmation ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#111111]/60 p-4">
+          <div className="w-full max-w-lg rounded-[26px] border-4 border-[#c7a531] bg-[#fffdf8] p-6 text-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#5a4309]">Confirm student assignment</p>
+            <h3 className="mt-3 text-2xl font-black uppercase">Review before saving</h3>
+            <div className="mt-5 space-y-3 rounded-2xl bg-[#f7f2ea] p-4 text-sm">
+              <p><span className="font-black">Student:</span> {studentEditor.draft.name.trim()}</p>
+              <p><span className="font-black">Parent:</span> {studentEditor.draft.parent.trim()}</p>
+              <p><span className="font-black">Base Class:</span> {studentEditor.draft.baseClassName}</p>
+              <p><span className="font-black">Day(s):</span> {studentEditor.draft.baseClassDays?.join(", ")}</p>
+              <p><span className="font-black">Class time:</span> {BASE_CLASS_SCHEDULE[studentEditor.draft.baseClassName ?? "Class 1"]?.time ?? ""}</p>
+              <p><span className="font-black">Belt:</span> {studentEditor.draft.belt}</p>
+            </div>
+            {studentError ? <p className="mt-3 text-sm font-bold text-[#8b1e1e]">{studentError}</p> : null}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowStudentConfirmation(false)}
+                className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-4 py-2 text-sm font-black uppercase tracking-[0.08em]"
+              >
+                Back to edit
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmStudentSave()}
+                className="rounded-full border border-[#b88a17] bg-[#d9b344] px-4 py-2 text-sm font-black uppercase tracking-[0.08em]"
+              >
+                Confirm and save
               </button>
             </div>
           </div>
