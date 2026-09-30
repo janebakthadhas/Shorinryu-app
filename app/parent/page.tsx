@@ -362,9 +362,11 @@ export default function ParentDashboardPage() {
 
     window.addEventListener("focus", refreshSchedule);
     document.addEventListener("visibilitychange", refreshOnVisibility);
+    const refreshInterval = window.setInterval(() => void refreshSchedule(), 5000);
     return () => {
       window.removeEventListener("focus", refreshSchedule);
       document.removeEventListener("visibilitychange", refreshOnVisibility);
+      window.clearInterval(refreshInterval);
       void client.removeChannel(channel);
     };
   }, [currentParent?.email]);
