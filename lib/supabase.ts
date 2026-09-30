@@ -114,6 +114,21 @@ export async function getSupabaseBookings(): Promise<BookingRecord[]> {
   return (data as SupabaseBookingRow[]).map(mapSupabaseBooking);
 }
 
+export async function getSupabaseSessionAvailability(): Promise<Record<string, { confirmed: number; open: number; isFull: boolean }>> {
+  if (!supabase) return {};
+
+  const { data, error } = await supabase
+    .from("session_availability")
+    .select("id, spots_taken, spots_open");
+  if (error || !data) return {};
+
+  return Object.fromEntries((data as Array<{ id: string; spots_taken: number; spots_open: number }>).map((row) => {
+    const confirmed = Number(row.spots_taken);
+    const open = Math.max(Number(row.spots_open), 0);
+    return [row.id, { confirmed, open, isFull: confirmed > 0 && open === 0 }];
+  }));
+}
+
 export async function getSupabaseSessions(): Promise<SessionRecord[]> {
   if (!supabase) return [];
 

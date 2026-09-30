@@ -79,6 +79,8 @@ join public.classes c on c.id = s.class_id
 left join public.bookings b on b.session_id = s.id
 group by s.id, c.id, c.name;
 
+grant select on public.session_availability to authenticated;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql

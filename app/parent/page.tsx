@@ -19,6 +19,7 @@ import {
   cancelSupabaseBooking,
   createSupabaseBooking,
   getSupabaseBookingsForParent,
+  getSupabaseSessionAvailability,
   getSupabaseSessions,
   getSupabaseStudents,
   supabase,
@@ -90,6 +91,7 @@ function BookingCard({
   session,
   classInfo,
   bookings,
+  sessionAvailability,
   guestBookings = [],
   baseAssignments,
   onBook,
@@ -99,13 +101,14 @@ function BookingCard({
   session: SessionRecord;
   classInfo: (typeof karateClasses)[number];
   bookings: BookingRecord[];
+  sessionAvailability: Record<string, { confirmed: number; open: number; isFull: boolean }>;
   guestBookings?: Array<{ sessionId: string; status?: string }>;
   baseAssignments: ParentChildRecord[];
   onBook: (sessionId: string) => void;
   onCancel: (sessionId: string) => void;
   currentParentName: string;
 }) {
-  const availability = getSessionAvailability(session, bookings, guestBookings, baseAssignments);
+  const availability = sessionAvailability[session.id] ?? getSessionAvailability(session, bookings, guestBookings, baseAssignments);
   const myBooking = bookings.find(
     (booking) =>
       booking.sessionId === session.id &&
@@ -180,6 +183,7 @@ const BOOKINGS_STORAGE_KEY = "shorinryu-admin-bookings";
 
 export default function ParentDashboardPage() {
   const [bookings, setBookings] = useState<BookingRecord[]>(initialBookings);
+  const [sessionAvailability, setSessionAvailability] = useState<Record<string, { confirmed: number; open: number; isFull: boolean }>>({});
   const [supabaseSessions, setSupabaseSessions] = useState<Awaited<ReturnType<typeof getSupabaseSessions>>>([]);
   const [guestBookings, setGuestBookings] = useState<Array<{ sessionId: string; status?: string }>>([]);
   const [currentParent, setCurrentParent] = useState<{ name: string; email: string } | null>(null);
@@ -280,13 +284,18 @@ export default function ParentDashboardPage() {
     const syncBookings = async () => {
       if (!currentParent?.email) {
         setBookings(initialBookings);
+        setSessionAvailability({});
         return;
       }
 
       if (supabase) {
         try {
-          const nextBookings = await getSupabaseBookingsForParent(currentParent.email);
+          const [nextBookings, nextAvailability] = await Promise.all([
+            getSupabaseBookingsForParent(currentParent.email),
+            getSupabaseSessionAvailability(),
+          ]);
           setBookings(nextBookings);
+          setSessionAvailability(nextAvailability);
           localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(nextBookings));
           return;
         } catch {
@@ -302,6 +311,7 @@ export default function ParentDashboardPage() {
             ? parsedBookings.filter((booking) => !booking.id.match(/^booking-[1-6]$/) && !booking.parentEmail.endsWith("@example.com"))
             : [];
           setBookings(realBookings);
+          setSessionAvailability({});
           return;
         }
       } catch {
@@ -309,6 +319,7 @@ export default function ParentDashboardPage() {
       }
 
       setBookings(initialBookings);
+      setSessionAvailability({});
       localStorage.setItem(BOOKINGS_STORAGE_KEY, JSON.stringify(initialBookings));
     };
 
@@ -331,13 +342,15 @@ export default function ParentDashboardPage() {
     const client = supabase;
 
     const refreshSchedule = async () => {
-      const [nextSessions, nextBookings, persistedStudents] = await Promise.all([
+      const [nextSessions, nextBookings, nextAvailability, persistedStudents] = await Promise.all([
         getSupabaseSessions(),
         getSupabaseBookingsForParent(currentParent.email),
+        getSupabaseSessionAvailability(),
         getSupabaseStudents(),
       ]);
       setSupabaseSessions(nextSessions);
       setBookings(nextBookings);
+      setSessionAvailability(nextAvailability);
       setChildren(persistedStudents
         .filter((student) => student.parentEmail.toLowerCase() === currentParent.email.toLowerCase())
         .map((student) => ({
@@ -380,9 +393,11 @@ export default function ParentDashboardPage() {
         if (storedBookings) {
           const parsedBookings = JSON.parse(storedBookings) as BookingRecord[];
           setBookings(Array.isArray(parsedBookings) ? parsedBookings : []);
+          setSessionAvailability({});
         }
       } catch {
         setBookings([]);
+        setSessionAvailability({});
       }
       setChildren(getParentChildrenForEmail(currentParent.email));
     };
@@ -1182,7 +1197,7 @@ export default function ParentDashboardPage() {
 
                           <div className="space-y-2">
                             {cell.sessions.map((session) => {
-                              const availability = getSessionAvailability(session, bookings, guestBookings, baseClassAssignments);
+                              const availability = sessionAvailability[session.id] ?? getSessionAvailability(session, bookings, guestBookings, baseClassAssignments);
                               const myBooking = bookings.some(
                                 (booking) =>
                                   booking.sessionId === session.id &&
@@ -1234,6 +1249,7 @@ export default function ParentDashboardPage() {
                             session={session}
                             classInfo={classInfo}
                             bookings={bookings}
+                            sessionAvailability={sessionAvailability}
                             guestBookings={guestBookings}
                             baseAssignments={baseClassAssignments}
                             onBook={handleBook}
