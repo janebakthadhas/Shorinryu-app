@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   buildMonthlySessions,
+  baseAssignmentMatchesSession,
   formatSessionLabel,
   getSessionDisplayName,
   getSessionAvailability,
@@ -1676,8 +1677,9 @@ export default function AdminPage() {
                               {(() => {
                                 const baseBooking = bookings.find(
                                   (booking) =>
-                                    baseAssignmentBookingIds.has(booking.id) &&
-                                    booking.childName.trim().toLowerCase() === student.name.trim().toLowerCase(),
+                                    booking.childName.trim().toLowerCase() === student.name.trim().toLowerCase() &&
+                                    (!student.parentEmail || booking.parentEmail.trim().toLowerCase() === student.parentEmail.trim().toLowerCase()) &&
+                                    baseAssignmentMatchesSession(student, allSessions.find((session) => session.id === booking.sessionId) ?? allSessions[0]),
                                 );
 
                                 return (
@@ -1687,27 +1689,18 @@ export default function AdminPage() {
                               <p className="mt-1 text-sm text-[#3b3b3b]">Parent: {student.parent}</p>
                               <p className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-[#5a4309]">Base Class: {className}</p>
                               <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-[#5a4309]">{student.classTime}</p>
-                              <button
-                                type="button"
-                                onClick={() => setDetailModal({ title: student.name === "N/A" ? student.parent : student.name, subtitle: student.belt, body: "This record includes the current belt level, parent contact summary, and class assignment. Use this section to review family details, send notes, or update the student profile." })}
-                                className="mt-3 rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
-                              >
-                                View details
-                              </button>
                               <div className="mt-3 flex gap-2">
                                 <button
                                   type="button"
-                                  disabled={!baseBooking}
                                   onClick={() => baseBooking && openEditBooking(baseBooking)}
-                                  className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717] disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
+                                  className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
                                 >
                                   Edit
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={!baseBooking}
                                   onClick={() => baseBooking && handleDeleteBooking(baseBooking.id)}
-                                  className="rounded-full border border-[#8a2424] bg-[#f6d9d9] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717] disabled:cursor-not-allowed disabled:border-[#bbb] disabled:bg-[#d8d8d8] disabled:text-[#666]"
+                                  className="rounded-full border border-[#8a2424] bg-[#f6d9d9] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171717]"
                                 >
                                   Cancel
                                 </button>
