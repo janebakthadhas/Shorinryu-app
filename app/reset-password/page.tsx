@@ -135,10 +135,10 @@ export default function ResetPasswordPage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push("/admin/login")}
+              onClick={() => router.push("/")}
               className="rounded-full border border-[#b88a17] bg-[#fffdf8] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#171717]"
             >
-              Admin login
+              Login
             </button>
           </div>
         </form>
