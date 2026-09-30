@@ -354,6 +354,7 @@ export default function ParentDashboardPage() {
     };
     const channel = client
       .channel("parent-capacity-sync")
+      .on("broadcast", { event: "schedule-updated" }, () => void refreshSchedule())
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, () => void refreshSchedule())
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => void refreshSchedule())
       .on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => void refreshSchedule())
@@ -366,6 +367,26 @@ export default function ParentDashboardPage() {
       document.removeEventListener("visibilitychange", refreshOnVisibility);
       void client.removeChannel(channel);
     };
+  }, [currentParent?.email]);
+
+  useEffect(() => {
+    if (supabase || !currentParent?.email) return;
+
+    const refreshLocalSchedule = () => {
+      try {
+        const storedBookings = localStorage.getItem(BOOKINGS_STORAGE_KEY);
+        if (storedBookings) {
+          const parsedBookings = JSON.parse(storedBookings) as BookingRecord[];
+          setBookings(Array.isArray(parsedBookings) ? parsedBookings : []);
+        }
+      } catch {
+        setBookings([]);
+      }
+      setChildren(getParentChildrenForEmail(currentParent.email));
+    };
+
+    window.addEventListener("storage", refreshLocalSchedule);
+    return () => window.removeEventListener("storage", refreshLocalSchedule);
   }, [currentParent?.email]);
 
   const currentParentName = currentParent?.name ?? "Parent";

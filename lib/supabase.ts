@@ -16,6 +16,19 @@ export const supabase = isSupabaseConfigured
 export const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim() || "admin@shorinryu.local";
 export const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD?.trim() || "admin123";
 
+export async function broadcastScheduleUpdate() {
+  if (!supabase) return;
+
+  const channel = supabase.channel("parent-capacity-sync");
+  await new Promise<void>((resolve) => {
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
+    });
+  });
+  await channel.send({ type: "broadcast", event: "schedule-updated", payload: {} });
+  await supabase.removeChannel(channel);
+}
+
 export async function getSupabaseUserRole(): Promise<"admin" | "parent" | null> {
   if (!supabase) {
     return null;

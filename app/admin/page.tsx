@@ -16,6 +16,7 @@ import {
 } from "@/lib/mock-data";
 import {
   cancelSupabaseBooking,
+  broadcastScheduleUpdate,
   createSupabaseBookingAsAdmin,
   createSupabaseStudent,
   getSupabaseBookings,
@@ -598,6 +599,7 @@ export default function AdminPage() {
 
     setBookingEditor(null);
     setBookingError("");
+    await broadcastScheduleUpdate();
   };
 
   const handleDeleteBooking = async (bookingId: string) => {
@@ -616,6 +618,7 @@ export default function AdminPage() {
       return nextList;
     });
     setBookingEditor(null);
+    await broadcastScheduleUpdate();
   };
 
   const openCreateStudent = () => {
@@ -789,6 +792,8 @@ export default function AdminPage() {
         });
       }
     }
+
+    await broadcastScheduleUpdate();
 
     setShowStudentConfirmation(false);
     setStudentEditor(null);
